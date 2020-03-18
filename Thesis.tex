@@ -1,7 +1,5 @@
 %%%%% FORMAT THE PAPER %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\input{define.tex}	% Read in list of user-\myname
-
 %\documentclass[final, 12pt]{thesis}  % this looks okay. (AAK, 8/2/08)
 %\documentclass[final,10pt,oneside]{thesis}
 %\documentclass[compact,10pt]{thesis}  % this looks like shit. (AAK, 8/2/08)
@@ -38,6 +36,9 @@
 \usepackage[usenames,dvipsnames]{color}
 %\usepackage[draft]{hyperref}
 \usepackage{hyperref}
+
+\input{define.tex}	% Read in list of user-\myname
+
 \hypersetup{
     pdftex,
     pdftitle={\thesisshorttitle},
@@ -180,9 +181,13 @@
 % I don't have any tables, so table column separation is not of concern.
 %\setlength{\tabcolsep}{0.035in}
 
-%\include{Chapter0-Introduction/Introduction}
-%\include{Chap2/chap2}
-%\include{Conclusion/Conclusion}
+\include{Chapter0-Introduction/intro}
+
+\include{Chapter1-MaNGAPCA1/chapter1}
+
+\include{Chapter2-MaNGAPCA2/chapter2}
+
+\include{Chapter3-MetDecs/chapter3}
 
 % See the thesis.cls file for the steps to convert AASTeX papers
 % into thesis chapters
