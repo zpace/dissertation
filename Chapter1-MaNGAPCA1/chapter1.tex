@@ -17,6 +17,30 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 \begin{chabstract}
-We present a method of fitting optical spectra of galaxies using a basis set of six vectors obtained from principal component analysis (PCA) of a library of synthetic spectra of 40000 star formation histories (SFHs). Using this library, we provide estimates of resolved effective stellar mass-to-light ratio ($\Upsilon^*$) for thousands of galaxies from the SDSS-IV/MaNGA integral-field spectroscopic survey. Using a testing framework built on additional synthetic SFHs, we show that the estimates of \logml{i} are reliable (as are their uncertainties) at a variety of signal-to-noise ratios, stellar metallicities, and dust attenuation conditions. Finally, we describe the future release of the resolved stellar mass-to-light ratios as a SDSS-IV/MaNGA Value-Added Catalog (VAC) and provide a link to the software used to conduct this analysis\footnote{\label{footnote:software_link}The software can be found at \url{https://github.com/zpace/pcay}.}
+We present a method of fitting optical spectra of galaxies using a basis set of six vectors obtained from principal component analysis (PCA) of a library of synthetic spectra of 40000 star formation histories (SFHs). Using this library, we provide estimates of resolved effective stellar mass-to-light ratio ($\Upsilon^*$) for thousands of galaxies from the SDSS-IV/MaNGA integral-field spectroscopic survey. Using a testing framework built on additional synthetic SFHs, we show that the estimates of \logml{i} are reliable (as are their uncertainties) at a variety of signal-to-noise ratios, stellar metallicities, and dust attenuation conditions. Finally, we describe the future release of the resolved stellar mass-to-light ratios as a SDSS-IV/MaNGA Value-Added Catalog (VAC) and provide a link to the software used to conduct this analysis\footnote{\fixspacing\label{footnote:software_link}The software can be found at \url{https://github.com/zpace/pcay}, and the VAC (including a full datamodel and link to the latests data) at \url{https://www.sdss.org/dr16/data_access/value-added-catalogs/?vac_id=manga-pca-vac}.}
 \end{chabstract}
 \cleardoublepage
+
+\graphicspath{{Chapter1-MaNGAPCA1/}}
+
+% citation aliases
+\defcitealias{pace_19a_pca}{MaNGA-PCA Paper \textsc{i}}
+\defcitealias{pace_19b_pca}{MaNGA-PCA Paper \textsc{ii}}
+\defcitealias{chen_pca}{C12}
+
+\input{Chapter1-MaNGAPCA1/chapter1_define.tex}
+
+\input{Chapter1-MaNGAPCA1/chapter1_intro.tex}
+
+\input{Chapter1-MaNGAPCA1/chapter1_data.tex}
+
+\input{Chapter1-MaNGAPCA1/chapter1_sfhs.tex}
+
+\input{Chapter1-MaNGAPCA1/chapter1_method.tex}
+
+\input{Chapter1-MaNGAPCA1/chapter1_discussion.tex}
+
+\input{Chapter1-MaNGAPCA1/chapter1_appendices.tex}
+
+\bibliographystyle{thesis.bst}
+\bibliography{Chapter1-MaNGAPCA1/references}{}

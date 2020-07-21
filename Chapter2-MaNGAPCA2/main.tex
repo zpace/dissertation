@@ -1,0 +1,341 @@
+%%
+%% Beginning of file 'sample62.tex'
+%%
+%% Modified 2018 January
+%%
+%% This is a sample manuscript marked up using the
+%% AASTeX v6.2 LaTeX 2e macros.
+%%
+%% AASTeX is now based on Alexey Vikhlinin's emulateapj.cls 
+%% (Copyright 2000-2015).  See the classfile for details.
+
+%% AASTeX requires revtex4-1.cls (http://publish.aps.org/revtex4/) and
+%% other external packages (latexsym, graphicx, amssymb, longtable, and epsf).
+%% All of these external packages should already be present in the modern TeX 
+%% distributions.  If not they can also be obtained at www.ctan.org.
+
+%% The first piece of markup in an AASTeX v6.x document is the \documentclass
+%% command. LaTeX will ignore any data that comes before this command. The 
+%% documentclass can take an optional argument to modify the output style.
+%% The command below calls the preprint style  which will produce a tightly 
+%% typeset, one-column, single-spaced document.  It is the default and thus
+%% does not need to be explicitly stated.
+%%
+%%
+%% using aastex version 6.2
+\documentclass[twocolumn, tighten, trackchanges]{aastex62}
+\bibliographystyle{aasjournal.bst}
+
+\usepackage{xspace}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{subfigure}
+\usepackage{hyperref}
+\usepackage{footmisc}
+\usepackage{caption}
+\usepackage{lscape}
+
+\usepackage{natbib} %don't use biblatex, you'll just waste 4 hours and still not get it right (you want citet and citep, RIGHT???)
+
+\newcommand{\myemail}{zpace@astro.wisc.edu}
+\newcommand{\Dn}{D$_n$4000\xspace}
+\newcommand{\HdeltaA}{H${\delta}_A$\xspace}
+\newcommand{\HgammaA}{H${\gamma}_A$\xspace}
+\newcommand{\mplv}{MPL-8\xspace}
+\newcommand{\mplvngal}{6779\xspace}
+\newcommand{\mplvfull}{MaNGA Product Launch 8\xspace}
+\newcommand{\ntestgalaxies}{417\xspace}
+\newcommand{\ntestspaxels}{502406\xspace}
+\newcommand{\nrungalaxies}{6356\xspace}
+\newcommand{\nSFHs}{4000\xspace}
+\newcommand{\nsubsample}{10\xspace}
+
+\newcommand{\logml}[1]{\ensuremath{\log \Upsilon^*_{#1}}}
+\newcommand{\qtydev}[1]{\ensuremath{\Delta #1}}
+\newcommand{\qtywid}[1]{\ensuremath{\sigma_{#1}}}
+\newcommand{\qtydevwid}[1]{\ensuremath{\frac{\qtydev{#1}}{\qtywid{#1}}}}
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\defcitealias{pace_19a_pca}{Paper \textsc{i}}
+\defcitealias{chen_pca}{C12}
+
+%% The default is a single spaced, 10 point font, single spaced article.
+%% There are 5 other style options available via an optional argument. They
+%% can be envoked like this:
+%%
+%% \documentclass[argument]{aastex62}
+%% 
+%% where the layout options are:
+%%
+%%  twocolumn   : two text columns, 10 point font, single spaced article.
+%%                This is the most compact and represent the final published
+%%                derived PDF copy of the accepted manuscript from the publisher
+%%  manuscript  : one text column, 12 point font, double spaced article.
+%%  preprint    : one text column, 12 point font, single spaced article.  
+%%  preprint2   : two text columns, 12 point font, single spaced article.
+%%  modern      : a stylish, single text column, 12 point font, article with
+%% 		  wider left and right margins. This uses the Daniel
+%% 		  Foreman-Mackey and David Hogg design.
+%%  RNAAS       : Preferred style for Research Notes which are by design 
+%%                lacking an abstract and brief. DO NOT use \begin{abstract}
+%%                and \end{abstract} with this style.
+%%
+%% Note that you can submit to the AAS Journals in any of these 6 styles.
+%%
+%% There are other optional arguments one can envoke to allow other stylistic
+%% actions. The available options are:
+%%
+%%  astrosymb    : Loads Astrosymb font and define \astrocommands. 
+%%  tighten      : Makes baselineskip slightly smaller, only works with 
+%%                 the twocolumn substyle.
+%%  times        : uses times font instead of the default
+%%  linenumbers  : turn on lineno package.
+%%  trackchanges : required to see the revision mark up and print its output
+%%  longauthor   : Do not use the more compressed footnote style (default) for 
+%%                 the author/collaboration/affiliations. Instead print all
+%%                 affiliation information after each name. Creates a much
+%%                 long author list but may be desirable for short author papers
+%%
+%% these can be used in any combination, e.g.
+%%
+%% \documentclass[twocolumn,linenumbers,trackchanges]{aastex62}
+%%
+%% AASTeX v6.* now includes \hyperref support. While we have built in specific
+%% defaults into the classfile you can manually override them with the
+%% \hypersetup command. For example,
+%%
+%%\hypersetup{linkcolor=red,citecolor=green,filecolor=cyan,urlcolor=magenta}
+%%
+%% will change the color of the internal links to red, the links to the
+%% bibliography to green, the file links to cyan, and the external links to
+%% magenta. Additional information on \hyperref options can be found here:
+%% https://www.tug.org/applications/hyperref/manual.html#x1-40003
+%%
+%% If you want to create your own macros, you can do so
+%% using \newcommand. Your macros should appear before
+%% the \begin{document} command.
+%%
+
+%% Reintroduced the \received and \accepted commands from AASTeX v5.2
+%\received{January 1, 2018}
+\revised{\today}
+%\accepted{\today}
+%% Command to document which AAS Journal the manuscript was submitted to.
+%% Adds "Submitted to " the arguement.
+\submitjournal{ApJ}
+
+%% Mark up commands to limit the number of authors on the front page.
+%% Note that in AASTeX v6.2 a \collaboration call (see below) counts as
+%% an author in this case.
+%
+%\AuthorCollaborationLimit=3
+%
+%% Will only show Schwarz, Muench and "the AAS Journals Data Scientist 
+%% collaboration" on the front page of this example manuscript.
+%%
+%% Note that all of the author will be shown in the published article.
+%% This feature is meant to be used prior to acceptance to make the
+%% front end of a long author article more manageable. Please do not use
+%% this functionality for manuscripts with less than 20 authors. Conversely,
+%% please do use this when the number of authors exceeds 40.
+%%
+%% Use \allauthors at the manuscript end to show the full author list.
+%% This command should only be used with \AuthorCollaborationLimit is used.
+
+%% The following command can be used to set the latex table counters.  It
+%% is needed in this document because it uses a mix of latex tabular and
+%% AASTeX deluxetables.  In general it should not be needed.
+%\setcounter{table}{1}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% The following section outlines numerous optional output that
+%% can be displayed in the front matter or as running meta-data.
+%%
+%% If you wish, you may supply running head information, although
+%% this information may be modified by the editorial offices.
+\shorttitle{PCA Stellar Masses: Paper \textsc{ii}}
+\shortauthors{Pace et al.}
+%%
+%% You can add a light gray and diagonal water-mark to the first page 
+%% with this command:
+% \watermark{text}
+%% where "text", e.g. DRAFT, is the text to appear.  If the text is 
+%% long you can control the water-mark size with:
+%  \setwatermarkfontsize{dimension}
+%% where dimension is any recognized LaTeX dimension, e.g. pt, in, etc.
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% This is the end of the preamble.  Indicate the beginning of the
+%% manuscript itself with \begin{document}.
+
+\begin{document}
+
+\title{Resolved and Integrated Stellar Masses in the SDSS-\textsc{iv}/\textsc{MaNGA} Survey, Paper \textsc{ii}: \\ Applications of PCA-based stellar mass estimates}
+
+%% LaTeX will automatically break titles if they run longer than
+%% one line. However, you may use \\ to force a line break if
+%% you desire. In v6.2 you can include a footnote in the title.
+
+%% A significant change from earlier AASTEX versions is in the structure for 
+%% calling author and affilations. The change was necessary to implement 
+%% autoindexing of affilations which prior was a manual process that could 
+%% easily be tedious in large author manuscripts.
+%%
+%% The \author command is the same as before except it now takes an optional
+%% arguement which is the 16 digit ORCID. The syntax is:
+%% \author[xxxx-xxxx-xxxx-xxxx]{Author Name}
+%%
+%% This will hyperlink the author name to the author's ORCID page. Note that
+%% during compilation, LaTeX will do some limited checking of the format of
+%% the ID to make sure it is valid.
+%%
+%% Use \affiliation for affiliation information. The old \affil is now aliased
+%% to \affiliation. AASTeX v6.2 will automatically index these in the header.
+%% When a duplicate is found its index will be the same as its previous entry.
+%%
+%% Note that \altaffilmark and \altaffiltext have been removed and thus 
+%% can not be used to document secondary affiliations. If they are used latex
+%% will issue a specific error message and quit. Please use multiple 
+%% \affiliation calls for to document more than one affiliation.
+%%
+%% The new \altaffiliation can be used to indicate some secondary information
+%% such as fellowships. This command produces a non-numeric footnote that is
+%% set away from the numeric \affiliation footnotes.  NOTE that if an
+%% \altaffiliation command is used it must come BEFORE the \affiliation call,
+%% right after the \author command, in order to place the footnotes in
+%% the proper location.
+%%
+%% Use \email to set provide email addresses. Each \email will appear on its
+%% own line so you can put multiple email address in one \email call. A new
+%% \correspondingauthor command is available in V6.2 to identify the
+%% corresponding author of the manuscript. It is the author's responsibility
+%% to make sure this name is also in the author list.
+%%
+%% While authors can be grouped inside the same \author and \affiliation
+%% commands it is better to have a single author for each. This allows for
+%% one to exploit all the new benefits and should make book-keeping easier.
+%%
+%% If done correctly the peer review system will be able to
+%% automatically put the author and affiliation information from the manuscript
+%% and save the corresponding author the trouble of entering it by hand.
+
+\correspondingauthor{Zachary J. Pace}
+\email{\myemail}
+
+\author[0000-0003-4843-4185]{Zachary J. {Pace}}
+\affil{Department of Astronomy, University of Wisconsin-Madison, 
+       475 N Charter St., Madison, WI 53706}
+
+\author[0000-0003-3097-5178]{Christy {Tremonti}}
+\affil{Department of Astronomy, University of Wisconsin-Madison, 
+       475 N Charter St., Madison, WI 53706}
+
+\author{Yanmei {Chen}}
+\affil{Department of Astronomy, Nanjing University, 
+       Nanjing 210093, China}
+
+\author{Adam L. {Schaefer}}
+\affil{Department of Astronomy, University of Wisconsin-Madison, 
+       475 N Charter St., Madison, WI 53706}
+
+\author[0000-0002-3131-4374]{Matthew A. {Bershady}}
+\affil{Department of Astronomy, University of Wisconsin-Madison, 
+       475 N Charter St., Madison, WI 53706}
+\affil{South African Astronomical Observatory, 
+       P.O. Box 9, Observatory 7935, Cape Town South Africa}
+
+\author[0000-0003-1809-6920]{Kyle B. {Westfall}}
+\affil{UCO/Lick Observatory, University of California, Santa Cruz, 
+       1156 High St., Santa Cruz, CA 95064}
+
+\author[0000-0003-0946-6176]{M\'{e}d\'{e}ric Boquien}
+\affil{Centro de Astronom\'{i}a, Universidad de Antofagasta, 
+       Avenida Angamos 601, Antofagasta 1270300, Chile}
+
+\author[0000-0001-7883-8434]{Kate {Rowlands}}
+\affil{Center for Astrophysical Sciences, Department of Physics and Astronomy, 
+       Johns Hopkins University \\
+       3400 North Charles Street, Baltimore, MD 21218, USA}
+
+\author[0000-0001-8085-5890]{Brett {Andrews}}
+\affil{TT PACC, Department of Physics and Astronomy, University of Pittsburgh, 
+       Pittsburgh, PA 15260, USA}
+
+\author[0000-0002-8725-1069]{Joel R. {Brownstein}}
+\affil{Department of Physics and Astronomy, University of Utah, 
+       115 S. 1400 E., Salt Lake City, UT 84112, USA}
+
+\author[0000-0002-7339-3170]{Niv {Drory}}
+\affil{McDonald Observatory, The University of Texas at Austin, 
+       1 University Station, Austin, TX 78712, USA}
+
+\author[0000-0002-6047-1010]{David {Wake}}
+\affil{Department of Physics, University of North Carolina Asheville, 
+       One University Heights, Asheville, NC 28804, USA}
+
+%% Note that the \and command from previous versions of AASTeX is now
+%% depreciated in this version as it is no longer necessary. AASTeX 
+%% automatically takes care of all commas and "and"s between authors names.
+
+%% AASTeX 6.2 has the new \collaboration and \nocollaboration commands to
+%% provide the collaboration status of a group of authors. These commands 
+%% can be used either before or after the list of corresponding authors. The
+%% argument for \collaboration is the collaboration identifier. Authors are
+%% encouraged to surround collaboration identifiers with ()s. The 
+%% \nocollaboration command takes no argument and exists to indicate that
+%% the nearby authors are not part of surrounding collaborations.
+
+%% Mark off the abstract in the ``abstract'' environment. 
+\begin{abstract}
+
+A galaxy’s stellar mass is one of its most fundamental properties, but it remains challenging to measure reliably. With the advent of very large optical spectroscopic surveys, efficient methods that can make use of low signal-to-noise spectra are needed. With this in mind, we created a new software package for estimating effective stellar mass-to-light ratios $\Upsilon^*$ that uses principal component analysis (PCA) basis set to optimize the comparison between observed spectra and a large library of stellar population synthesis models. In \citetalias{pace_19a_pca}, we showed that a with a set of six PCA basis vectors we could faithfully represent most optical spectra from the Mapping Nearby Galaxies at APO (MaNGA) survey; and we tested the accuracy of our M/L estimates using synthetic spectra. Here, we explore sources of systematic error in our mass measurements by comparing our new measurements to data  from the literature. We compare our stellar mass surface density estimates to kinematics-derived dynamical mass surface density measurements from the DiskMass Survey and find some tension between the two which could be resolved if the disk scale-heights used in the kinematic analysis were overestimated by a factor of $\sim1.5$. We formulate an aperture-corrected stellar mass catalog for the MaNGA survey, and compare to previous stellar mass estimates based on multi-band optical photometry, finding typical discrepancies of 0.1 dex. Using the spatially resolved MaNGA data, we evaluate the impact of estimating total stellar masses from spatially unresolved spectra, and we explore how the biases that result from unresolved spectra depend upon the galaxy’s dust extinction and star formation rate. Finally, we describe a SDSS Value-Added Catalog which will include both spatially resolved and total (aperture-corrected) stellar masses for MaNGA galaxies.
+
+\end{abstract}
+
+%% Keywords should appear after the \end{abstract} command. 
+%% See the online documentation for the full list of available subject
+%% keywords and the rules for their use.
+\keywords{}
+
+%% From the front matter, we move on to the body of the paper.
+%% Sections are demarcated by \section and \subsection, respectively.
+%% Observe the use of the LaTeX \label
+%% command after the \subsection to give a symbolic KEY to the
+%% subsection for cross-referencing in a \ref command.
+%% You can use LaTeX's \ref and \label commands to keep track of
+%% cross-references to sections, equations, tables, and figures.
+%% That way, if you change the order of any elements, LaTeX will
+%% automatically renumber them.
+%%
+%% We recommend that authors also use the natbib \citep
+%% and \citet commands to identify citations.  The citations are
+%% tied to the reference list via symbolic KEYs. The KEY corresponds
+%% to the KEY in the \bibitem in the reference list below. 
+
+\input{intro.tex}
+
+\input{data.tex}
+
+\input{method.tex}
+
+\input{discussion.tex}
+
+\input{acknowledgements.tex}
+
+\software{Astropy \citep{astropy}, matplotlib \citep{matplotlib}, statsmodels \citep{seabold2010statsmodels}}
+
+\bibliography{main}
+
+%% This command is needed to show the entire author+affilation list when
+%% the collaboration and author truncation commands are used.  It has to
+%% go at the end of the manuscript.
+%\allauthors
+
+\listofchanges
+
+\end{document}

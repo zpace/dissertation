@@ -35,13 +35,15 @@
 \usepackage{amsmath,amssymb}		% package to get fancy math stuff
 \usepackage[usenames,dvipsnames]{color}
 %\usepackage[draft]{hyperref}
-\usepackage{hyperref}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=red]{hyperref}
+\usepackage{xspace}
+\usepackage{xcolor}
 
 \input{define.tex}	% Read in list of user-\myname
 
 \hypersetup{
     pdftex,
-    pdftitle={\thesisshorttitle},
+    pdftitle={\thesistitle},
     pdfauthor={\myname}
 }
 %\usepackage{tabularx}
@@ -100,21 +102,21 @@
 %\captionsetup[figure]{font=rm,labelsep=none}
 
 %%%%% TITLE PAGE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\title{\thesistitle}
+\title{\allcapsthesistitle}
 
 \author{\myname}
 \year{\thesisyear}
 
 % These two aren't really needed except for the UMI abstract
-\adviser{Dr.\ Awesome Advisor}
+\adviser{Prof. Christy Tremonti}
 \adviserrank{Associate Professor}
 
 \oralexamdate{\examdate}
-\committeeone{Member One, Associate Professor, Astronomy}
-\committeetwo{Member Two, Professor, Astronomy}
-\committeethree{Member Three, Assistant Professor, Astronomy}
-\committeefour{Member Four, Professor, Astronomy}
-\committeefive{Member Five, Professor, Physics}
+\committeeone{Christy Tremonti, Associate Professor, Astronomy}
+\committeetwo{Matthew Bershady, Professor, Astronomy}
+\committeethree{Keith Bechtol, Assistant Professor, Physics}
+\committeefour{Robert Benjamin, Professor, Astronomy, University of Wisconsin-Whitewater}
+\committeefive{Aleksandar Diamond-Stanic, Assistant Professor, Physics and Astronomy, Bates College}
 
 \ttlpage                % This command produces the title page.  Nifty!
 %\cpypage                % This produces the copyright page.  Also nifty!
@@ -188,6 +190,10 @@
 \include{Chapter2-MaNGAPCA2/chapter2}
 
 \include{Chapter3-MetDecs/chapter3}
+
+\include{Conclusions}
+
+\bibliographystyle{thesis}
 
 % See the thesis.cls file for the steps to convert AASTeX papers
 % into thesis chapters

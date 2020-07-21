@@ -397,7 +397,7 @@
          \@committeetwo\\
          \@committeethree\\
          \@committeefour\\
-        % \@committeefive
+         \@committeefive
      \end{minipage}
 %     \indent \@committeesix 
 

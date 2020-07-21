@@ -1,0 +1,618 @@
+\section{Parameter Estimation in the PCA Framework}
+\label{chap1:sec:method}
+
+The goal of this analysis is to obtain estimates of physical quantities (especially resolved stellar mass) by reducing the dimensionality of observed spectra from a vector of length $\sim 4000$ to one of length $\sim 6$, and the overall approach to the analysis is very close to \citetalias{chen_pca}: for some observed spectrum, we then find its best representation in terms of linear combinations of the principal component vectors, taking into account covariate noise arising from imperfect spectrophotometry. Finally, we evaluate how well each training spectrum matches the observed spectrum \emph{in principal component space}, and assign weights to the training spectra accordingly. The weights are used to approximate probability density functions (PDFs) of interesting quantities such as stellar mass-to-light ratio ($\Upsilon^*$). Table \ref{tab:vars} provides a complete digest of the notation used in this section to describe the use of principal component analysis.
+
+\begin{table*}
+    \centering
+    \begin{tabular}{||c|p{5in}|c||} \hline
+        Symbol & Description & Dimension\footnote{if applicable}\\ \hline
+        $n$ & Number of CSPs in training library & - \\ \hline
+        $n'$ & Number of spaxels analyzed in a single MaNGA datacube & - \\ \hline
+        $l$ & Number of spectral channels in each CSP and observed spectrum & - \\ \hline
+        $p$ & Number of quantities (such as stellar mass-to-light ratio) stored for each CSP & - \\ \hline
+        $q$ & Number of principal components retained for final dimensionality reduction & - \\ \hline
+        $D$ & Training data (already normalized) & $(n,l)$ \\ \hline
+        $D'_q$ & Training data, comprising only the first $q$ PCs (subscript often omitted for clarity) & $(n,l)$ \\ \hline
+        $E$ & Eigenspectra obtained from the model library & $(q,l)$ \\ \hline
+        $A$ & Principal Component amplitudes obtained by projecting spectra onto the eigenspectra & $(n,q)$ \\ \hline
+        $R$ & Residual obtained by subtracting $D'_q$ from $D$ & $(n,l)$ \\ \hline
+        $K_{th}$ & Theoretical covariance matrix, obtained from $R$ & $(q,q)$ \\ \hline
+        $\{Y_i\}$ & Set of physical parameters that produced the set of model spectra (also notated simply $Y$, when referring to a matrix with rows representing model spectra) & $(n,p)$ \\ \hline
+        $C$ ($Z$) & Linear regression coefficients (zeropoints) that link the values in $\{P\}$ to PC amplitudes $A$ & $(q,p)$ ($(p)$)\\ \hline
+        $O$ & Observed spectra, in flux-density units & $(n',l)$ \\ \hline
+        $a$ & Median value of observed spectra $O$ or training data $T$, used to normalize data & $(n')$ \\ \hline
+        $M$ & Median spectrum, obtained by averaging all model spectra's values in a given spectral element & $(l)$ \\ \hline
+        $S$ & Unity-normalized and median-spectrum-subtracted spectra, $O/a - M$ & $(n',l)$ \\ \hline
+        $O'_q$ & Observed spectra, comprising only the first $q$ PCs (subscript often omitted for clarity) & $(n',l)$ \\ \hline
+        $K^{obs}$ & Observational covariance matrix, obtained from multiply-observed MaNGA objects and unique to a given spectrum & $(n',l,l)$ \\ \hline
+        $V$ & The variance of one spectrum, obtained directly from the reduced data products & $(l,l)$ \\ \hline
+        $N^{lhs}_{obs}$, $N^{rhs}_{obs}$ & Assumed noise propagated from exact de-redshifting of observed spectra into the fixed, rest-frame eigenspectra wavelength grid & \\ \hline
+        $K^{PC}$ & PC covariance matrix for a given spectrum & $(n',q,q)$ \\ \hline
+        $P^{PC}$ & Inverse of $K^{PC}$, computed for each observed spectrum (sometimes referenced elsewhere as ``concentration" or ``precision") & $(n',q,q)$ \\ \hline
+        $\chi^2$ & Chi-squared deviation between each observed spectrum's PC representation and each model's & $(n',n)$ \\ \hline
+        $W$ & Weight of each model spectrum used to construct joint parameter PDF, computed according to Equation \ref{eqn:logl} & $(n',n)$ \\ \hline
+        $\{F_{i,j}\}$ & Set of marginalized PDFs for each spectrum (indexed by $i$) and each parameter (indexed by $j$) & $(n',p,-)$ \\ \hline
+    \end{tabular}
+    \caption[PCA method notation]{\fixspacing Symbols used in this section for the mathematical description of the PCA method.}
+    \label{tab:vars}
+\end{table*}
+
+\subsection{The PCA system}
+\label{chap1:subsec:run_pca}
+
+We first construct the PCA vector basis:
+\begin{enumerate}
+\itemsep0em
+    \item Pre-process all model spectra: 
+    \begin{enumerate}
+        \item Convolve with Gaussian kernel of width $\sigma \sim$ 65 km s$^{\rm -1}$, to account for difference between C3K native resolution and MaNGA instrumental resolution\footnote{The line-spread function specifies the (wavelength-dependent) manner in which a spectrum is blurred by a spectrograph. In the case of the MaNGA data, this amounts to between 1 and 3 pixels on the spectrograph, depending on the wavelength. Details for how to compute this can be found in \citet{cappellari_17}, as well as in Appendix \ref{chap1:apdx:lsf}.}.
+        \item Interpolate to a logarithmic wavelength grid from 3600--8800 $\mbox{\AA}$, with $d \log \lambda = 1.0 \times 10^{-4}$, yielding final model spectra ($D$).
+        \item Normalize spectra, dividing by their median values \footnote{Normalizing by the median (rather than the mean) makes very little difference for the training data, but is less sensitive to the occasional un-flagged emission line or small discontinuity in the observed data.}.
+    \end{enumerate}
+    \item Compute and subtract from all model spectra the median spectrum of all models ($M$), yielding median-subtracted training spectra ($T$)
+    \item Compute the eigen-decomposition of $T$ using ``covariance method", retaining the first $q$ vectors as ``principal components" ($E$).
+    \item Project $T$ onto $E$, compute the residuals $R$, and compute the resulting covariance $K_{th}$.
+\end{enumerate}
+
+Figure \ref{fig:eigenspectra} shows the normalized mean spectrum and each of the first six eigenspectra. Comparison with a ``broken-stick" model of marginal variance suggests that six is a suitable number (see Section \ref{chap1:subsec:picking_q} for more discussion). Conveniently, at this value of $q$, the remaining variance in the training data is well below typical random and spectrophotometric uncertainties, which means that the PC space should represent the complete view on the data within MaNGA's observational constraints. While the physical interpretation of the eigenspectra is not straightforward (and ``adding up" multiples of PCs is \emph{not} equivalent to ``adding up" stars to form a SSPs or SSPs to form a more complicated stellar population), we explore their correlations with physical properties in Section \ref{chap1:subsec:pc_meaning}.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\textwidth]{PCs_FSPS}
+    \caption[Principal component system]{\fixspacing Top panel: the normalized mean spectrum of the training data. Panels 2--7: principal component vectors 1--6 of the training data.}
+    \label{fig:eigenspectra}
+\end{figure*}
+
+If a single spectrum (with $l$ wavelength values) is a single point in $l$-dimensional space, then $n$ spectra form a cloud in $l$-dimensional space. In the case of the generated model spectra, we can claim to have constructed a space where $n \sim 20,000$ and $l \sim 5,000$. PCA will then find the orthogonal basis set that maximizes the amount of information retained, utilizing $q < l$ dimensions. PCA can be reduced to a singular value decomposition (SVD), but in our case, where $n > l$, it is equivalent and most efficient to compute as an eigenvalue problem on the covariance matrix. In particular, the training data $D$ has a dimension of $(n, l)$\footnote{We adopt the convention of a matrix with dimension $(a, b)$ having $a$ rows and $b$ columns. For such a matrix $A$, we would select the value in row $i$ and column $j$ as $A_{i,j}$, all of row $i$ as $A_{i,.}$, and all of column $j$ as $A_{.,j}$. For cases where subscripts could be mistaken for indices, we substitute superscripts.}, and we wish to reduce it to a set of eigenvectors $E$ (i.e., a subspace) of dimension $(q, l)$. The eigenvector that contains the most ``information" (corresponding to the vector in $l$-dimensional space that captures the most variation in the data) is the eigenvector of $C = \textrm{Cov}(D)$ with the largest eigenvalue.
+
+To project all of the points in $D$ onto $E$, take the dot product of $D$ with the transpose of $E$, yielding a matrix of dimension $(n, q)$, whose $i^{\textrm{th}}$ row is the weights of each eigenvector used to construct $D_{i,.}$. Thus,
+\begin{equation}
+    A = D \cdot E^T
+    \label{eqn:pc_downprojection_simple}
+\end{equation}
+
+Therefore, in order to reconstruct all of the training data $D$ in terms of their first $q$ PCs ($D'$), we take the dot product of $A$ and $E$
+
+\begin{equation}
+    T' = A \cdot E
+\end{equation}
+%
+and define the residual
+%
+\begin{equation}
+    R = D - D' = D - (A \cdot E)
+\end{equation}
+%
+which is used to construct a theoretical covariance matrix $K_{th} = \textrm{Cov}(R)$, meant to account for all remaining variation in the models not captured by the first $q$ eigenspectra, and is used in addition to observational and spectrophotometric uncertainties in Section \ref{chap1:subsec:PC_unc} to compute weights on each model.
+
+\subsection{Validating number of PCs retained: eigenvalues and the scree plot}
+\label{chap1:subsec:picking_q}
+
+The $i^{\rm th}$ eigenvalue $\lambda_i$ of a principal component system describes the fraction of the total variance in the system captured by PC $i$:
+
+\begin{equation}
+    V^f_i = \frac{\lambda_i}{\sum_j \lambda_j}
+\end{equation}
+
+This is often visualized as a ``scree plot" (Fig. \ref{fig:screeplot}), in which a flattening of $V^f$ is used to indicate lessened marginal gains in fit quality per additional PC retained. \citet{jackson_pca_dim} recommends a heuristic based on the ``broken-stick" method, which assumes that the variance is split randomly into $N$ parts (that is, all spectral channels have uniform variance). In such a case, the $i^{\rm th}$-largest fractional variance will be 
+%
+\begin{equation}
+    U^f_i = \frac{1}{N} \sum_{j=i}^N \frac{1}{j}
+\end{equation}
+%
+The PC representation can be considered complete when $U^f_i$ exceeds $V^f_i$ (that is, when any improved fit quality can be ascribed entirely to adding a parameter to the fit). Fig. \ref{fig:screeplot} shows that $q = 6$ is safely in this regime.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{screeplot}
+    \caption[Scree plot, and variance explained]{\fixspacing In blue: training data variance described by each successive principal component; in black: the fractional variance expected from the broken-stick method (randomly-apportioned variance).}
+    \label{fig:screeplot}
+\end{figure}
+
+Furthermore, it is desirable to enforce a PCA solution that is general (i.e., the PCs should not lose substantial reliability on data not used to train the model). This can be thought of as the model simply memorizing the training data, and can be evaluated by examining fit quality on held-out (``validation") data generated identically to the training data. Over-fitting could arise from the training SFHs themselves, or from the three sub-sampled parameters ($\sigma$, $\tau_V$, and $\mu$). Fig. \ref{fig:xval_q} illustrates the root-mean-square (RMS) residual between the validation data and their PC representations.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{xval_test}
+    \caption[Fractional reconstruction residual for validation data]{In light blue, the dependence of RMS reconstruction residual on the number of PCs retained. Reconstruction is carried out on a sample of 4000 held-out (``validation") spectra. The black dashed line denotes an RMS reconstruction error of 2\%.}
+    \label{fig:xval_q}
+\end{figure}
+
+The inclusion of noise in the observed spectra (but not in the CSPs used to construct the PCA model) means that lowering the ``down-projection error" for observed spectra (described by theoretical spectral covariance matrix $K^{th}$) will not substantially improve the fidelity of their reconstructions. In other words, setting the number of principal components retained to 6 means that noisy data will limit the quality of the down-projections (see Section \ref{chap1:sec:nmodels_vs_accuracy}) for spectra with median signal-to-noise ratio above approximately 20.
+
+\subsubsection{Computational concerns}
+
+The dimensionality $q$ of the chosen ``reduced" space (i.e., the number of eigenspectra with which we seek to reproduce some general observed spectra of dimension $l$) has a few additional important consequences from the computational perspective:
+\begin{itemize}
+    \itemsep0em
+    \item Matrix multiplication of $A_{n \times m}$ and $B_{m \times p}$ generally is a $\mathcal{O}(m~n~p)$ operation, so minimizing the number of principal components retained will allow faster down-projection.
+    \item Since the volume of a cube of $d$ dimensions and side length $2 r$ rises as $(2r)^d$; and the volume of a sphere of $d$ dimensions and radius $r$ rises as $\frac{2 r^d \pi^{d/2}}{d ~ \Gamma(d/2)}$, a sphere occupies a smaller fraction of the cube's volume as $d$ increases. A consequence of this ``curse of dimensionality" is observed when one arbitrarily increases the number of principal components retained, $q$: the distance between two points increases faster than the likelihood-weight can account for the increase, so model weights become extremely low. The likelihood scores used to compare each model to an observed spectrum only provide a \emph{point estimate} of the model likelihood, so seeing many models with nonzero likelihood scores will give confidence that a particular spectrum is well-characterized in PC space.
+\end{itemize}
+
+\subsection{Developing a physical intuition for principal components}
+\label{chap1:subsec:pc_meaning}
+
+As in \citetalias{chen_pca}, we wish to develop an intuition for the physics encoded in each PC. Though easily understandable relationships between physical quantities and principal component amplitudes are not guaranteed, they do tend to emerge. These relationships can be visualized by plotting each model's PC amplitude against the set of parameters $\{P_i\}$ (see Fig. \ref{fig:PCs_vs_params}). For example, mass-to-light ratio in $r$, $i$, and $z$ bands are most correlated with the first PC. This is of course compatible with the overall shape of that eigenspectrum (see pane 2 of Figure \ref{fig:eigenspectra}). \citet{kong_01_pca} similarly noted (by performing PCA on SSPs) that a young stellar population is correlated with large coefficients on principal component 1. However, some of the information about stellar mass-to-light ratio is contained in higher PCs (which have smaller coefficients, on average), meaning that using just PC1 (as that study did) will never give better results than using all PCs. Another striking example is the correlation of velocity dispersion $\sigma$ with principal components 3 and 6.
+
+\begin{figure*}
+    \centering
+    \includegraphics[height=0.925\textheight, width=0.925\textwidth, keepaspectratio]{PCs_params_FSPS}
+    \caption[Principal component amplitudes versus SFH properties of interest]{\fixspacing Selected directly-modelled parameters ($\sigma$, $\log \frac{Z}{Z_{\odot}}$, $\tau_V$, and $\tau_V \mu$) and derived parameters ($\log \Upsilon^*_i$, \Dn, \HdeltaA, and $\log$ mass-weighted stellar age), versus principal component amplitudes. Each scatter-subplot plots the amplitude of the PC corresponding to its column (on the x-axis) against the parameter corresponding to its row (on the y-axis). The right-most column and top-most row hold histograms of PC amplitudes and parameter values, respectively.}
+    \label{fig:PCs_vs_params}
+\end{figure*}
+
+However, caution must be used when interpreting the eigenspectra directly: these intuitive interpretations are made under the assumption that the training spectra represent reality both in individuals stars (not guaranteed, in the case of the fully-theoretical spectra used here); and in the adopted distributions of SFHs. That is, the training data and the PCA dimensionality-reduction must work in tandem.
+
+\subsection{The observational spectral covariance matrix}
+\label{chap1:subsec:cov}
+
+There is an additional source of uncertainty in MaNGA spectra, beyond that provided in the LOGCUBE data products. Specifically, the spectrophotometric flux-calibration of individual exposures, followed by the compositing of those exposures into a regularly-gridded datacube, induces small \citep[$\sim 4\%$, according to][]{manga_drp}, wavelength-dependent irregularities in individual spectra. In part, this is because the exposures are taken under a wide variety of airmasses \& seeing conditions. The overall effect is that of a small covariance between spectral channels: \citetalias{chen_pca} found that accounting for this covariance is necessary for obtaining reliable estimates of stellar mass-to-light ratios and other quantities. The covariance is described by a matrix $K_{obs}$, which can be calculated by comparing multiple independent sets of observations of a single object (\citetalias{chen_pca}, Equation 9):
+
+\begin{eqnarray}
+    K_{obs}(\lambda_1,~\lambda_2) = \frac{1}{2 N_{pair}} \sum_{j=1}^{N_{pair}} \nonumber \\ \left[ (S_j^0(\lambda_1) - S_j^1(\lambda_1)) \times (S_j^0(\lambda_2) - S_j^1(\lambda_2)) \right]
+\end{eqnarray}
+%
+where each element $K_{obs}(\lambda_1,~\lambda_2)$ denotes the covariance between observed-frame spectral elements $\lambda_1$ and $\lambda_2$, and is calculated using the difference between two spectra ($S_j^0$ and $S_j^1$) of a single object $j$.
+
+In \citetalias{chen_pca}, the spectral covariance matrix was found using reobserved objects from the SDSS(-III)/BOSS project. Since BOSS and MaNGA use the same spectrograph, the spectral covariances will be similar; however, the hexabundle construction of the MaNGA IFUs results in more precise compensation for atmospheric dispersion, which commensurately improves spectrophotometric calibration \citep{manga_spectrophot}. Therefore, we will recalculate $K_{obs}$ using multiply-observed MaNGA galaxies. Though the number of re-observed MaNGA galaxies is much lower than the number of re-observed BOSS sources, each MaNGA galaxy has hundreds or thousands of spectra that can be compared with their ``sister" locations. The result is shown in Figure \ref{fig:cov_obs_manga}, and as expected contains less off-diagonal power than the BOSS covariance. While the covariance should be smooth (since its main contributor is the multiplicative flux-calibration vector), there are some sharper features which manifest in the RMS of ten-thousand random draws from $K_{obs}$ (Figure \ref{fig:boss_manga_cov}): for instance, in the $\sim 7000-8000 \mbox{\AA}$ range. While such features could perhaps be attributed to poorly-compensated sky emission or telluric absorption, this appears not to be the case: we have examined both $K_{obs}$ itself and random draws from it, but found no consistent correspondence with typical telluric absorption or sky emission spectra.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{cov_obs_tremonti_small}
+    \caption[Spectrophotometric covariance matrix]{\fixspacing MaNGA's observational covariance matrix $K_{obs}$, which arises due to imperfect spectrophotometric flux-calibration of MaNGA spectra. See Figure 5 of \citetalias{chen_pca} for comparison.}
+    \label{fig:cov_obs_manga}
+\end{figure}
+
+$K_{obs}$ can be equivalently thought of as a multivariate-normal probability distribution (with each spectral channel being represented by one row and column in the covariance matrix) centered around zero, describing the noise profile for an ensemble of MaNGA spectra. This view offers a pathway towards comparing the covariance of MaNGA spectra with that of BOSS spectra. We draw 10,000 samples each from the BOSS covariance matrix (which was computed in \citetalias{chen_pca}) and the MaNGA covariance matrix. At each wavelength, the RMS value (which can be taken as the average RMS value of the noise in that spectral channel) is computed. The results of that computation are shown in Figure \ref{fig:boss_manga_cov}. As a general rule, the BOSS covariance matrix (computed and used in \citetalias{chen_pca}) has greater spectrophotometric uncertainty (generally by a factor of $\sim 5$ in the wavelength ranges employed in this work) than the MaNGA covariance matrix computed above.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\columnwidth]{boss_manga_cov}
+    \caption[Sample noise spectra drawn from MaNGA and BOSS spectrophotometric covariance]{\fixspacing In blue, the RMS value of 10,000 noise vectors drawn from the BOSS covariance matrix; and in orange, the RMS value of 10,000 noise vectors drawn from the MaNGA covariance matrix.}
+    \label{fig:boss_manga_cov}
+\end{figure}
+
+$K_{obs}$ will be used in Section \ref{chap1:subsec:PC_unc} to obtain a PC amplitude covariance matrix and confidence bounds for parameters of interest.
+
+\subsection{Fitting the observations with eigenspectra}
+\label{chap1:sec:obs2pc}
+
+Each observed spectrum can now be fit as a linear combination of ``eigenspectra" $E$, subject to a scaling ($a$) and an unknown (but constrained) noise vector ($N$), which comprises the incompleteness of the PCA decomposition and the imperfect spectrophotometry.
+
+First, an observed spectrum is pre-processed:
+\begin{enumerate}
+\itemsep0em
+    \item Galactic extinction is removed, assuming an \citet{odonnell_94_mw_extinction} extinction law and $R_V = 3.1$, and using the $E(B-V)$ color excess provided in the header of the reduced data products \citep{schlegel_finkbeiner_davis}. Both flux-density and its inverse-variance are corrected.
+    \item The spectrum is brought into the rest frame, combining the systemic velocity obtained from the NSA with spatially-resolved stellar velocity field obtained from the MaNGA DAP results. Both the flux-density and its inverse-variance are de-redshifted and drizzled into the rest frame using an adaptation of \citet{carnall_17}\footnote{It is preferable to obtain a rest-frame spectrum with the exact same wavelength pixelization as the eigenspectra. Two wavelength solutions $f_l$ and $f_r$ are extracted, corresponding to the two closest integer-pixel mappings between the eigenspectra's wavelength grid and the spectral cube's ``exact" wavelength solution. $f_l$ and $f_r$ are combined with weights equal to the relative fraction that they subtend on the exact solution. The uncertainties in these two exact solutions are also propagated into a final, re-gridded solution. This approach was found to produce better fits to the observations than the integer-pixel solution, which tended to prefer a fit with broader absorption features.}.
+    \item The spectrum is normalized by its median value ($a$), and the median spectrum ($M$) of the PCA system is subtracted.
+    \item Spectral channels with likely contamination by emission lines are flagged for later replacement: any spectral channel within 1.5 times the line-width (velocity dispersion, as found in the MaNGA DAP) from the rest-frame line center is flagged. Which wavelength locations are masked is based on the equivalent width of the H$\alpha$ emission-line measured by the MaNGA DAP:
+    \begin{itemize}
+    \itemsep0em
+        \item Always: H$\alpha$ through H$\epsilon$; [O\textsc{ii}]3726,28; [Ne\textsc{iii}]3869; [O\textsc{iii}]4959,5007; [O\textsc{I}]6300; [N\textsc{ii}]6548,84; [S\textsc{ii}]6716,30; [S\textsc{III}]9069; [S\textsc{III}]9531
+        \item Where EW$(H\alpha) > 2~\mbox{\AA}$: Balmer lines through H$30$
+        \item Where EW$(H\alpha) > 10~\mbox{\AA}$: Paschen series P$8$ through P$18$; He\textsc{i}3819; He\textsc{i}3889; He\textsc{i}4026; He\textsc{i}4388; He\textsc{i}4471; He\textsc{ii}4686; He\textsc{i}4922; He\textsc{i}5015; He\textsc{i}5047; He\textsc{i}5876; He\textsc{i}6678; He\textsc{i}7065; He\textsc{i}7281 [Ne\textsc{III}]3967; [S\textsc{II}]4069; [S\textsc{II}]4076; [O\textsc{III}]4363; [Fe\textsc{III}]4658; [Fe\textsc{III}]4702; [Fe\textsc{IV}]4704 [Ar\textsc{IV}]4711; [Ar\textsc{IV}]4740; [Fe\textsc{III}]4989; [N\textsc{I}]5197; [Fe\textsc{III}]5270; [Cl\textsc{III}]5518; [Cl\textsc{III}]5538; [N\textsc{II}]5755; [S\textsc{III}]6312; [O\textsc{I}]6363; [Ar\textsc{III}]7135; [O\textsc{II}]7319; [O\textsc{II}]7330; [Ar\textsc{III}]7751; [Ar\textsc{III}]8036; [O\textsc{I}]8446; [Cl\textsc{II}]8585; [N\textsc{I}]8683; [S\textsc{III}]8829
+    \end{itemize}
+    Flagged spectral channels are replaced (i.e., item-imputed) as the inverse-variance-weighted rolling-mean of the unmasked subset of the nearest 101 pixels. This approach is almost identical to that employed in \citetalias{chen_pca}. Since this step is performed on the normalized, median-subtracted spectrum, the replacement does not universally decrease, for instance, the depth of absorption-lines in the spectrum. As we discuss below, the more rigorous way of performing this calculation would involve \emph{re-computing} the geometric transformation that produces the PC amplitudes from the spectrum, an unacceptable loss in speed. Previous work has demonstrated that modestly-gappy data ($\sim 10\%$ of spectral channels masked) produces $\sim 2\%$ deviations (RMS) in principal-component amplitudes \citep[Figure 5 of][]{connolly_robust_pca}. Other possible frameworks for emission-line masking are discussed in Section \ref{chap1:subsec:balmer}.
+    \item If the spectrum is more than 30\% masked by either data-quality flags or emission-line masks, the entire spectrum is presumed bad. Tests on further synthetic spectra (see Section \ref{chap1:subsec:mocks_tests} and Appendix \ref{chap1:apdx:fakedata} for more details about how such mock observations were prepared) suggest that in spectra \emph{un-contaminated} by bad data, fits with and without flags do not substantially change either PC amplitudes (i.e., a group of similar noise realizations of the same synthetic spectra, at a single SNR, does not, in a statistically-significant way, experience a change in its PC amplitudes) or the estimates of stellar mass-to-light ratio that emerge.
+    \item The spectrum $S = \frac{O}{a} - M$ is now ready to be decomposed using the eigenspectra obtained in Section \ref{chap1:subsec:run_pca}.
+\end{enumerate}
+
+Transforming the discretely-sampled spectrum by a fraction of a pixel also induces a small, off-diagonal covariance $K_{obs}^{od}$. The exact magnitude of the covariance depends on the position within a rest-frame spectral bin of the boundary between the two nearest integer-pixel solutions. The position of this boundary, $f$, lies in the range 0--1 (in units of the width of a $\log \lambda$ bin), and the off-diagonal terms are the variances of the left-hand-side and right-hand-size, weighted by $f_{lhs}$ and $f_{rhs} = 1 - f_{lhs}$.
+%
+\begin{equation}
+    K_{obs}^{od} = f_{lhs} N_{obs}^{lhs} + (1 - f_{lhs}) N_{obs}^{rhs}
+\end{equation}
+%
+which depends only weakly on the precise rest-frame pixel boundary, so we fix $f_{lhs} = f_{rhs} = 0.5$, where the result is maximized for the case of constant noise.
+
+\subsection{Towards optimal flagging and masking of Balmer emission-lines}
+\label{chap1:subsec:balmer}
+
+The Balmer absorption features in stellar population spectra are among the most important age diagnostics; however, in all but the most quiescent, gas-free environments, these features will be contaminated by gaseous emission. As stated above, in this work, we elect to flag all spectral elements within 1.5 times the velocity-dispersion of ${\rm H\alpha}$. Those flagged spectral elements of the median-subtracted spectrum $S$ are then replaced by the weighted mean of the nearest 101 spectral elements (hereafter notated as the ``WM101" or fidicual method). On one hand, this relatively narrow flagging region might induce a bias in the PC amplitudes for spectra with bright, high-velocity-dispersion gaseous emission; on the other hand, it is not desirable to sacrifice the information contained in these important spectral features. We address here two alternatives: work with emission line-subtracted spectra (as \citealt{gallazzi_charlot_05} does---the ``GC05" method), or explicitly exclude all flagged-and-replaced spectral channels (notated as the ``M" method, because it is equivalent to replacing flagged spectral channels with the median of the PC system).
+
+It is perhaps most tempting to work with spectra where emission lines have already been subtracted, since the cores of the Balmer absorption lines are now uncontaminated (``GC05"). However, this requires having first executed a round of full-spectral fitting (which necessarily adopts a stellar library). Indeed, concurrent work with MaNGA IFS data has shown that emission line measurements can be sensitive to the particular SSP library used for fitting the stellar continuum: \citet[][Figure 9]{belfiore_19_dap-elines} indicates that as S/N rises beyond 10, changing spectral library from the hierarchically-clustered MILES library (MILES-HC, which is the DR15 fiducial) to MIUSCAT, M11-MILES, or BC03 induces a systematic uncertainty in emission-line flux comparable to the random uncertainties. In other words, the choice of stellar library is important.
+
+One could also argue for the more conservative masking option, explicitly excluding all spectral channels suspected to be contaminated by emission-lines (``M" method). The case against that tactic is more subtle: first, the PC system used in this work is centered at zero, as a result of subtracting the median spectrum $M$ of the CSP library from each of the CSP spectra. When one ``eliminates" spectral channels thought to be unreliable, one implies that the values in those channels are identical to the corresponding value in $M$ (i.e, there is no further information beyond what the median spectrum of the SFH training library provides); in reality, the values in the spectrum in such channels are likely better approximated by an average of their near neighbors.
+
+\subsubsection{Tension between flagged-and-replaced spectra and their fits?}
+
+We show here a further test, which uses the 25 most extremely star-forming (but non-AGN) galaxies, based on total integrated ${\rm H\alpha}$ luminosity (from the MaNGA DAP). If the ``WM101" method neglects effects from emission wings, then we should see deficiencies in the stellar continuum fits around the Balmer lines as the equivalent width of ${\rm H\alpha}$ in emission increases. In other words, we want to know if unmasked emission wings cause a problem in our fiducial correction more than in the alternative ``M" method. We correct the 25 high-SFR galaxies using both methods, and fit them using the PCA basis set. Finally, for both correction methods, we measure \& compare equivalent width of four Balmer absorption lines (${\rm H\alpha}$, ${\rm H\beta}$, ${\rm H\gamma}$, and ${\rm H\delta}$) in both the corrected-observations and the fits to them (Figure \ref{fig:balmermasking_test}). If, as ${\rm EW_{em}(H\alpha)}$ increases, the ``fit" and ``corrected-then-fit" spectra produce significantly different ${\rm EW_{abs}(H\alpha)}$ values, then one would conclude that a strong Balmer emission line ``biases" the eventual spectral fit.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=0.95\textwidth]{balmermasking_test}
+    \caption[Effects of strong Balmer emission on fits to highest four Balmer absorption features]{\fixspacing Each panel shows the difference in EW of Balmer absorption (left to right: ${\rm H\alpha}$, ${\rm H\beta}$, ${\rm H\gamma}$, ${\rm H\delta}$) between the corrected and corrected-then-fit spectra: in the top row, ``corrected" refers to flagged elements being replaced with the corresponding values in $M$ ($S_0$, equivalent to neglecting those spectral channels entirely); in the bottom row, ``corrected" refers to flagged elements replaced with the rolling mean of their neighbors ($S_{repl}$). The solid, gray line denotes the rolling median at fixed ${\rm EW_{em}(H\alpha)}$, and the gray band the dispersion at fixed ${\rm EW_{em}(H\alpha)}$.}
+    \label{fig:balmermasking_test}
+\end{figure*}
+
+The result of these comparisons is shown in Figure \ref{fig:balmermasking_test}: each panel shows the difference in the equivalent widths of Balmer lines in absorption between the initial ``corrected" spectra and the fits to those spectra (in the top panels, correction is performed with the ``M" method; in the bottom panels, correction is performed with the ``WM101" method; and left to right, columns refer to ${\rm H\alpha}$, ${\rm H\beta}$, ${\rm H\gamma}$, and ${\rm H\delta}$). The differences between these cases are very slight, but at the most basic level, regardless of correction paradigm, stronger Balmer absorption in the corrected spectra than in their fits tends to correlate with increased ${\rm H\alpha}$ emission. However, replacement with $M$ tends to produce a stronger Balmer absorption deficit in the fits, regardless of which line is considered; the ``WM101" method behaves in a manner less dependent on ${\rm EW_{em}(H\alpha)}$ in the case of ${\rm H\beta}$ \& ${\rm H\delta}$ (little to no improvement is seen in the ${\rm H\alpha}$ and ${\rm H\gamma}$ cases). While it's clear that ``WM101" produces some tension between individual spectra and their fits, this basic test indicates that the performance in the vicinity of some Balmer absorption lines is more consistent than the ``M" method.
+
+\subsubsection{Evaluating Balmer-masking with synthetic observations of PCA best-fits}
+
+Here we produce and discuss an additional test of the two candidate replacement schemes: the fiducial (``WM101") and the alternative (``M"). For each of 200 randomly-selected galaxies, we perform a normal PCA fit of each spaxel (projecting each individual, observed spectrum onto the principal components obtained from the training data---see Section \ref{chap1:subsec:PC_unc}). The obtained principal component amplitudes $A$ are then used to reconstruct the best approximation of the observation, $O_{\rm true}$, which we treat as the ``known" spectrum. We also measure the equivalent width of the H$\beta$ absorption feature \citep{worthey_ottaviani_97} for $O_{\rm true}$. After applying instrumental noise to $O_{\rm true}$ (see Section \ref{chap1:subsec:cov} and Section \ref{chap1:subsec:mocks_tests} for more information about constructing synthetic observations), we fit $O_{\rm true}$ using each of the two correction methods, transform (as before) the resultant fit from PC space to spectral space ($O_{\rm fit}$), and once again measure H$\beta$ for each case.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=0.95\textwidth]{balmer_abs_compare}
+    \caption[Effects of Balmer-masking strategies]{\fixspacing $d{\rm EW} = {\rm EW_{abs}^{H\beta}}(O_{\rm fit}) - {\rm EW_{abs}^{H\beta}}(O_{\rm true})$ versus (left to right) ${\rm EW_{abs}^{H\beta}}(O_{\rm true})$, median signal-to-noise ratio (SNR), and DAP equivalent width of the H$\alpha$, using the fiducial (top row) and the alternative (bottom row) strategies. Pixels are colored according to the logarithm of the number of spectra within. On each panel is overlaid the rolling median of $d{\rm EW}$ (red line) and the dispersion about the median calculated using the median absolute deviation (red band).}
+    \label{fig:mocks_of_fits_ewHb}
+\end{figure*}
+
+Figure \ref{fig:mocks_of_fits_ewHb} shows the difference $d{\rm EW} = {\rm EW_{abs}^{H\beta}}(O_{\rm fit}) - {\rm EW_{abs}^{H\beta}}(O_{\rm true})$ for the rolling-mean replacement (top row) and the zero-replacement (bottom row). $d{\rm EW}$ is plotted against (from left to right) ${\rm EW_{abs}^{H\beta}}(O_{\rm true})$, median signal-to-noise ratio (SNR), and the equivalent width of the H$\alpha$ emission line as reported in the MaNGA DAP (spaxels with fractional uncertainty in H$\alpha$ emission equivalent width greater than $\frac{1}{3}$ are excluded). Broadly speaking, the two cases are very similar; but slight differences emerge in limiting cases. For instance, for the ``M" method seems to produce more outliers with $d{\rm EW} < 0 \mbox{\AA}$ at high ${\rm EW_{abs}^{H\beta}}(O_{\rm true})$, and vice-versa at low ${\rm EW_{abs}^{H\beta}}(O_{\rm true})$ (but behaves on average the same). Though this effect is small, it suggests that Balmer depths can be somewhat moderated by replacement with the median spectrum $M$ (which conceptually represents a medium-age stellar population).
+
+Second, the ``WM101" method exhibits some unbalance of outliers having $d{\rm EW} \sim -1 \mbox{\AA}$ at moderate-to-high signal-to-noise. That said, it has a locus at $d{\rm EW} \sim 0.2 \mbox{\AA}$ at similar signal-to-noise. Finally, though the ``WM101" method is stable with respect to ${\rm EW^{H\alpha}_{em}} [DAP]$, the ``M" method becomes somewhat overzealous in its production of $d{\rm EW} > 0 \mbox{\AA}$ fits. The apparent ``bulging" of the two distributions at moderate ${\rm EW^{H\alpha}_{em}} [DAP]$ reflects that more spaxels reside in that neighborhood, rather than an intrinsic deficiency of the replacement schemas there. The effects we note here are subtle, and this test suggests that the two proposed replacement methods do not substantially differ except in the most extreme cases. Ultimately, the widths of $d{\rm EW}$ are small. That said, because the ``WM101" method behaves more uniformly with respect to ${\rm EW_{abs}^{H\beta}}(O_{\rm true})$ and ${\rm EW^{H\alpha}_{em}} [DAP]$, we believe it is the slightly preferable choice.
+
+\subsubsection{Flag-and-replace stellar models}
+
+We briefly explore here the effects of the ``WM101" method on the CSP model spectra themselves, and what influence that exerts on the eigenspectra. Since the Balmer absorption lines provide indications of stellar population age, smoothing over those features in the models should also suppress them in a resulting principal component basis set. Beginning with the set of CSPs described in Section \ref{chap1:sec:SFHs}, the ``WM101" method outlined in Section \ref{chap1:sec:obs2pc} is used to ``eliminate`` the influence of all spectral channels within 120 ${\rm km s^{-1}}$ of all Balmer lines\footnote{This velocity window is used as an illustration for the case of a reasonably wide emission line.}. After those adulterations, the model spectra are once again used to build a PC basis set.
+
+\begin{figure*}
+    \centering
+    \includegraphics[angle=90,height=0.95\textheight]{pcs_withmasking_compare}
+    \caption[Balmer fit residuals using two masking strategies]{\fixspacing A comparison in the vicinity of the first five Balmer absorption lines (H$\alpha$, H$\beta$, H$\gamma$, H$\delta$, and H$\epsilon$) of the principal component basis set resulting from flag-and-replacement (\textit{blue}) and no flag-and-replacement (\textit{black}). The overall spectral shape is largely preserved, especially in the lower principal components; and the masked regions exert an influence opposite to the absorption features. Each row of panels signifies a principal component vector (or, for the top row, the median spectrum), and each column corresponds to one absorption feature).}
+    \label{fig:pcs_withmasking_compare}
+\end{figure*}
+
+Figure \ref{fig:pcs_withmasking_compare} shows a comparison between the eigenspectra of our ``normal" PC basis set with that resulting from ``WM101" replacement of the \emph{model spectra themselves} in the vicinity of Balmer line centers. The shapes of the eigenspectra (i.e., neglecting the core of the absorption line affected by the mask) are conserved best in PC1--PC4 (as mass-to-light ratio follows PC1 most closely, this is a very desirable behavior). Furthermore, examining the shapes of the absorption features, if the fiducial PC basis set ``dips" in the core of the line, the flag-and-replaced version tends to ``rise" in the handful of spectral channels within the replacement area; and if the fiducial ``rises", then the replaced area ``dips". Note that the eigenspectra's masked spectral channels are \textit{not} necessarily drawn towards zero, simply in the opposite direction as the manifestation of the Balmer absorption feature.
+
+\subsection{Estimating PC coefficients and uncertainties for observed spectra}
+\label{chap1:subsec:PC_unc}
+
+We now discuss finding the values and the uncertainty of the principal component coefficients $A$. Observed galaxy spectra $O$ previously had their missing data (where emission-line or data-quality masks are set) are then imputed by a rolling filter with a width of 101 pixels. If data cannot be imputed in this way, it is still possible to perform the calculation below by imputing missing values as zeros (introduces some bias), or by explicitly eliminating entries of columns of eigenspectra $E$ and both rows and columns of spectral covariance $K$ where data are flagged and replaced (much slower, as the projection matrix must be explicitly recalculated for each spectrum). Spectra $O$ are then normalized by dividing by their median value $a$ and subtracting the PCA median spectrum $M$, yielding a spectrum $S$.
+
+The PC amplitudes $A$ are the solution to the linear system $E ~ A = S$, subject to covariate noise (assumed to be drawn from a multivariate-normal distribution with mean zero and covariance $K$). In particular, an individual observation $S$ includes the ``true" spectrum $S_0$; plus contributions from the ``theoretical" noise, $N_{th}$ (which accounts for the imperfect PCA decomposition), the error due to imperfect spectrophotometry $N_{obs}$ (discussed in Section \ref{chap1:subsec:cov}), the small off-diagonal covariance $K_{obs}^{od}$ resulting from the fractional-pixel rest-frame wavelength solution, and the photon-counting noise $N_{cube}$ reported in the datacube itself:
+%
+\begin{equation}
+    \widetilde{S} = S + a ~ N_{th} + N_{obs} + N_{cube}
+\end{equation}
+
+The noise vectors $N_{th}$ and $N_{obs}$ are assumed to be drawn from their respective covariance matrices $K_{th}$ and $K_{obs}$, and $N_{cube}$ is the noise profile associated with the measured and reported inverse-variance of the data. $K_{th}$ was computed above as the covariance of the residual obtained in reconstructing the training data from the first $q$ PCs. $K_{obs}$ indicates the uncertainty manifested in the flux-calibration step of data reduction (see Section \ref{chap1:subsec:cov}).
+
+$K_{obs}$ should be evaluated over the \emph{observed} wavelength range appropriate to particular observations, rather than over the corresponding rest-frame wavelength range. This produces a slightly different covariance matrix from spaxel to spaxel even within the same spectral cube, and potentially a very different covariance matrix from object to object. This is due to the different observed-frame positions of the same rest wavelength, as recessional velocity changes; as well as the varying surface brightness within a galaxy's physical extent. As $K_{obs}$ is assumed to be smooth on small wavelength scales, we use the nearest-pixel solution for each spectrum. We add a small ($\alpha \sim 10^{-3}$) regularization term to the main-diagonal of $K_{obs}$: this functions as a ``softening parameter", which maintains a minimum dispersion of $K_{PC}$ (only becoming important at high signal-to-noise). This small term allows for some marginal data-model mismatch (see Section \ref{chap1:sec:discussion})--but still allows for data-quality masks to be set in the case of PDFs which are an especially bad match for the prior (see Section \ref{chap1:subsec:data_quality} for more discussion of data-quality masks).
+
+In order to solve the system $E ~ A = S$, we define the orthogonal projection matrix
+%
+\begin{equation}
+    H = (E^T E)^{-1} E^T
+\end{equation}
+%
+where $(E^T E)^{-1}$ is found only once through Cholesky decomposition \citep[one method of decomposing a Hermitian, positive-definite matrix into the product of a lower-triangular matrix and its conjugate transpose, ][]{numerical-recipes_1986} after regularizing on the main diagonal\footnote{The effect of the regularization's strength on the residual between original and ``reduced" spectrum is strongly subdominant to the effect of the dimensionality reduction itself, and the fit quality does not change noticeably over a wide range in regularization parameter $\alpha \sim [1 \times 10^{-6},~1]$}. Since $H$ depends only on the eigen-decomposition of the training data, it is not affected by the specific noise realization of an observation, and need not be calculated repeatedly, unless masked data wish to be explicitly discounted, rather than replaced with a local median as outlined above. The maximum-likelihood PC weights are then given by
+%
+\begin{equation}
+    A = H ~ S
+\end{equation}
+%
+and the principal component covariance matrix by
+%
+\begin{equation}
+    K_{PC} = H^T K H
+\end{equation}
+
+The spectrum corresponding to the maximum-likelihood solution $A$ is therefore the inner product $E \cdot A$, and an example comparison between an observed spectrum and its maximum-likelihood PC representation is shown in Figure \ref{fig:sample_fit}, in the two top-right panels.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\textwidth,height=0.9\textheight,keepaspectratio]{8566-12705_fulldiag_37-37}
+    \caption[MaNGA spaxel diagnostic figure from PC fits]{\fixspacing The standard diagnostic figure produced for the center spaxel (coordinates \texttt{37, 37}) of MaNGA galaxy 8566-12705. Top-left frame: map of the galaxy's $i$-band luminosity (the ``hole" in the map signifies where data have been masked due to either a foreground star or data-quality issues identified in the data reduction process). Top-right frame, top section: in \textit{blue}, the observed, median-normalized spectrum $\frac{O}{a}$; in \textit{green}, the spectrum reconstructed from the first 6 principal components of the model library; in \textit{cyan}, the highest-weighted model spectrum (flagged spectral channels are not displayed). Top-right frame, bottom section: in \textit{green}, the residual of the PC fit (with respect to the original spectrum); in \textit{cyan}, the residual of the best-fitting model (with respect to the original spectrum); flagged spectral channels are not displayed; in \textit{salmon}, the average fractional residual of the PCA fit, approximately 5\%, in this case (comparable to the typical spectrophotometric error budget of MaNGA spectra). Other frames: histograms of individual SPS input and derived parameters, with the full training model set (``prior") in magenta, the distribution after weighting by model likelihoods (in \emph{black}, see Equation \ref{eqn:logl}), and the highest-likelihood model as the vertical, cyan line. The 50$^{\rm th}$ percentile of the posterior is shown as a green diamond, and the 16$^{\rm th}$ to 84$^{\rm th}$ percentile range as a green, horizontal bar.}
+    \label{fig:sample_fit}
+\end{figure*}
+
+\subsubsection{Effects of sky residuals}
+\label{chap1:subsubsec:sky_resid}
+
+Since the spectral range considered here extends into the infrared wavelengths, it is important to consider the possible effects of badly-subtracted sky emission (properly-subtracted emission will have no effect apart from an increase in uncertainty). As of \mplv, 28 ``science" IFU frames have viewed just sky. These data provide a baseline for the types of sky residuals which might be present in typical science exposures.
+
+First, we test how incomplete sky-subtraction affects the estimates of principal component amplitudes themselves. In Figure \ref{fig:sky_resid}, we show the dependence of each of the first six principal components on sky residual RMS (relative to a given spectrum's normalization---so, a smaller sky residual in absolute terms will have a more severe effect in a low-surface-brightness spaxel). The weight vector associated with each spectrum is neglected, to emulate the worst-case of entirely un-subtracted sky. Redshift is varied along the abscissas: one observed-frame sky spectrum can probe a variety of rest-frame wavelengths, depending on the source redshift. Generally, at low residual RMS and low redshift, the effects on principal component amplitudes are small (less than .1). However, the impact of sky residuals rises with source redshift, since the observed-frame spectrum samples a redder wavelength range where there are more bands of sky emission. Estimates of mass-to-light ratio rely mainly on the first PC, whose amplitude is generally around 10, which makes deviations of $\sim .1$ relatively unimportant, when compared to the overall uncertainty budget.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\textwidth]{sky_resids}
+    \caption[Effects of imperfect sky subtraction on PC down-projection]{\fixspacing In each subplot, the change in principle component amplitude $dA_i$ (ordinate axis) induced by sky residuals at a level ${\rm RMS_{sky}}$ (color) relative to a normalized, observed spectrum, at some redshift (abscissa). At residual RMS below 10\%, the effects on PC amplitudes are generally small (also 10\%) or less. The PC amplitude perturbations very slightly increase with redshift.}
+    \label{fig:sky_resid}
+\end{figure*}
+
+Second, we create additional synthetic data by randomly sampling the sky-only IFU frames (as in Appendix \ref{chap1:apdx:fakedata}), and adding them to the ``mock" observations. This does not result in any noticeable change to the spectral fits, and the stellar mass-to-light ratios are consistent at .02 level, RMS.
+
+\subsection{Quantity estimates}
+\label{chap1:subsec:param_estimates}
+
+In order to estimate a latent (i.e., unobserved) parameter or quantity of interest $P_i$ corresponding to some observed data $S$ in the lower-dimensional space defined by $E$, we find the likelihood $W_a$ of each model (where $a$ denotes an individual model) given $S$. We begin by finding the weighted-magnitude of the difference between a given model's PC coefficients $A_a$ and the PC down-projection of observations $A_o$, using the PC projection of the total spectral covariance matrix obtained above. That is, we calculate the Mahalanobis distance \citep{mahalanobis_36} between model and observations, subject to a distance metric defined by the covariance matrix:
+%
+\begin{equation}
+    D^2_a = (A_a - A_o) \cdot P_{PC} \cdot (A_a - A_o)^T
+    \label{eqn:model_chi2}
+\end{equation}
+%
+where $D^2_a$ is the squared Mahalanobis distance between a model defined by PC coefficients $A_a$ and the PC down-projection of observations $A_o$, subject to the PC covariance matrix $K_{PC}$ and its inverse $P_{PC}$. The distance is immediately convertible to a model likelihood $W_a$ \citep{GIRI197749}:
+%
+\begin{equation}
+    \log{W_a} = -\frac{1}{2} (\log{|K_{PC}|} - D^2_a - q \log{2 \pi})
+    \label{eqn:logl}
+\end{equation}
+%
+
+The likelihood is used as a weight, and accounts for theoretical degeneracies associated with any spectral fitting process (e.g., age-metallicity); as well as the effects of observational noise and spectrophotometric error. In reality, most desktop computers are capable of computing Equation \ref{eqn:model_chi2} simultaneously for all spaxels in a cube.
+
+The lower panels of Figure \ref{fig:sample_fit} show example SPS-input and derived parameter distributions for the central spaxel of MaNGA galaxy 8566-12705. The magenta histograms show the distribution of training data used to build the PCA system and construct the parameter estimates, and the black histograms show the result of weighting by the individual model likelihoods yielded by Equation \ref{eqn:logl}. The best-characterized quantities are stellar mass-to-light ratio and dust optical depth affecting old stars $\tau_V \mu$ (in general, $\tau_V$ alone is best estimated when young stars are present; otherwise, $\tau_V \mu$ can be estimated more robustly). In contrast, stellar metallicity is only weakly constrained, and (though not displayed here) parameters scaling the BHB and BSS are not at all well-constrained.
+
+An estimate for some parameter $Y_i$ can be obtained by computing $W_a$ (by evaluating Equation \ref{eqn:logl}) for all model spectra and a given observed spectrum, and then constructing a probability distribution based on those weights. Here, we quote the 16$^{\textrm{th}}$, 50$^{\textrm{th}}$, and 84$^{\textrm{th}}$ percentile values, with one-half the 16$^{\textrm{th}}$ to 84$^{\textrm{th}}$ percentile range as the ``distribution width". Below, we extensively evaluate the effectiveness of the PCA parameter estimation method in inferring stellar mass-to-light ratio, reddening, and stellar metallicity by using held-out ``test" data generated in the same way as the training data and (Appendix \ref{chap1:apdx:fakedata} describes in detail how the mock observations are created from synthetic spectra).
+
+\subsubsection{Validating number of models against reliability of quantity estimates}
+\label{chap1:subsec:pdf_population}
+
+Separate from the issue of PC decomposition, the number of training spectra may also impact the quality of the parameter estimates, since the PC-coefficient space must be well-sampled in the vicinity of the best-fit spectrum in order to build reliable parameter PDFs. To illustrate this, we generate estimates of $\Upsilon_i$ for all spaxels in a single galaxy after randomly selecting a fraction of the training data to use in building the PDF. We then calculate the standard deviation of that distribution. Fig. \ref{fig:modelnumber_PDF} illustrates the interplay of median spectral signal-to-noise ratio and number of models, which together affect parameter estimate accuracy. In particular, there is very little improvement that results from increasing the number of models beyond 15,000. Fig. \ref{fig:modelnumber_PDF} also shows that even using large numbers of models, at high signal-to-noise, estimates of $\log{\Upsilon^*_i}$ begin to be affected by under-population of the PDF, at the .01 (absolute) level.
+
+\begin{figure*}
+    \centering
+    \includegraphics{SNR_vs_modelnum}
+    \caption[Number of models' effect on reliability of parameter estimate]{\fixspacing Variability in mass-to-light estimate (50th percentile of marginalized posterior PDF) associated with changing the number of models used to populate the distribution. Each color point represents a single spectrum with the specified number of models. At low signal-to-noise and high model count, this effect is negligible; however, more models help mitigate PDF under-population at S/N $>$ 10.}
+    \label{fig:modelnumber_PDF}
+\end{figure*}
+
+\subsubsection{What limits our ability to infer quantities of interest?}
+\label{chap1:sec:nmodels_vs_accuracy}
+
+The question of number of training models can be further elucidated by the following example: suppose that a quantity of interest, $p$, has some unknown, linear dependence $B$ on principal component amplitudes $A$:
+
+\begin{equation}
+    P = A \cdot B + \epsilon
+\end{equation}
+%
+where $\epsilon$ denotes a vector of white noise.
+
+To illustrate this, we generate a vector $B$ from a $q$-dimensional unit Gaussian, and simulate the effects of sampling this ``placeholder quantity"'s PDF with a varying number of ``placeholder models", subject to covariate uncertainty in PC amplitude estimates. After fixing $B$, we randomize $N$ models ($N$ is allowed to vary from $10^1$ to $10^{6}$) distributed according to a $q$-dimensional unit Gaussian modulated by the eigenvalues of the PCA system derived from the CSP training library. A separate, ``correct" model PC amplitude vector and true quantity value $p_0$ are generated according to the same prescription. A PC amplitude covariance matrix $K_{PC}$ drawn at random from actual fits to MaNGA spectra (see Sections \ref{chap1:sec:obs2pc} and \ref{chap1:subsec:PC_unc}) is used to sample the posterior probability density function (PDF) of $Y$ (see Section \ref{chap1:subsec:param_estimates}), given an estimate of $A$ which is exactly correct. The median of this PDF, $\tilde{p}$, is taken as the fiducial estimate of $p$.
+
+We proceed to evaluate how close $\tilde{p}$ is to the true value, $p_0$, normalizing the deviation $dp = \tilde{p} - p_0$ by the intrinsic width in the distribution of the quantity of interest in the set of placeholder models, $\sigma_p$. Under these assumptions, and setting $q = 6$, the critical number of models to achieve $\frac{dp}{\sigma_p} \lesssim .01$ is $N = 10^4$. Furthermore, as $N$ increases, this quantity of merit decreases further, though the most poorly-behaved cases ($\frac{dp}{\sigma_p} \sim 1$) arise with vanishingly-low frequency at $N \gtrsim 10^3$.
+
+However, this does not tell the whole story, since we cannot exactly estimate $A$ for our observed spectra; an estimate of $A$ is more realistically drawn from a distribution centered at $A_0$ with covariance $K_{PC}$ (see Section \ref{chap1:subsec:cov} and \citealt{manga_spectrophot}). This erases many of the precision gains achieved at $N > 10^4$. In other words, imperfect spectrophotometry of the MaNGA data places a more stringent limit on the accuracy of quantity estimates.
+
+Figure \ref{fig:nmodels_paramerr_imperfectA} shows the effect of varying $N$ from $10^1$ to $10^6$ on the cumulative distribution of $\log \frac{\Delta p}{\sigma_p}$. While at $N < 10^3$, these trials also exhibit some unreliability ($\log \frac{dp}{\sigma_p} \gtrsim 0$), there is almost no marginal benefit to adopting $N \gtrsim 10^4$.
+
+\begin{figure*}
+    \centering
+    \includegraphics{nmodels_paramerr_imperfectA}
+    \caption[Parameter reliability assuming imperfect PC down-projection]{The cumulative distribution of $\log \frac{\Delta p}{\sigma_p}$ for values of $N$ between $10^1$ and $10^6$, under the assumption of imperfect estimation of $A$. The model library used in this work has $N = 40000$, reliably within the locus of trials with low $\frac{dp}{\sigma_p}$.}
+    \label{fig:nmodels_paramerr_imperfectA}
+\end{figure*}
+
+This test indicates that while increasing the number of models brings some improvement in estimate quality for a generic quantity of interest, the benefit is diminished when the imperfect estimation of PC amplitudes $A$ (mediated by the spectrophotometric covariance of the data, via the PC covariance matrix $K_{PC}$) is accounted for. In order to realize meaningful benefits from increasing the number of CSP models, the spectrophotometry of the survey itself would have to improve by a significant margin.
+
+\subsection{Data-quality and masking}
+\label{chap1:subsec:data_quality}
+
+We implement very basic data-quality cuts, intended to locate and mark spectra which might produce misleading measurements. Though no whole galaxies are neglected for data-quality concerns, spaxels with any of the following characteristics are presumed to have unreliable fits and parameter estimates:
+\begin{itemize}
+    \item More than 30\% of spectral pixels masked for any reason (combining the MaNGA DRP and emission-line flags)---see Section \ref{chap1:sec:obs2pc}
+    \item Median signal-to-noise ratio below 0.1.
+    \item Uncertainty in stellar line-of-sight velocity greater than 500 km/s
+    \item Poorly-sampled posterior PDF: where the highest-likelihood model fit to a given spectrum is $W^*$, if less than a fraction $b$ of all models have likelihoods at least $d~W^*$, it is concluded that not enough models sample the important region of PC space to robustly estimate stellar mass-to-light ratio and other stellar population characteristics. Subsequent analysis in this work uses $b = 10^{-4}$ and $d = 10^{-1}$ (see Appendix \ref{chap1:subsec:pdf_population} for related discussion), but the associated data-product maps of $\Upsilon^*_i$ also have maps of the value of $b$ for $d = 0.01, 0.05, 0.1, 0.25, 0.5, 0.9$. In general, this mask is generally applied at high signal-to-noise ratio, and in cases where an observed spectrum differs from a typical galaxy spectrum (e.g., a broad-line AGN)
+\end{itemize}
+
+The effects of imperfect sky-subtraction on synthetic spectra are discussed in Appendix \ref{chap1:subsubsec:sky_resid}: stellar mass-to-light ratio is mostly informed by the first principal component (which typically has an amplitude of $\sim 10$), and the deviations in that principal component induced by un-subtracted sky at the 10\% (RMS)\footnote{In reality, this is a \emph{very significant} degree of sky-contamination, since the flux-density of the sky contamination is strongly bimodal.} level is $\le 0.1$, a 1\% perturbation. Taking into account all principal components, the logarithmic change induced for a stellar mass-to-light ratio estimate is $\le .02$.
+
+\subsection{Tests on held-out, synthetic data} % needs better title
+\label{chap1:subsec:mocks_tests}
+
+We now address the reliability of the stellar mass-to-light ratio estimates obtained through PCA, by testing against synthetic data (referred to also as ```mock observations") intended to simulate real MaNGA observations. It is expected that reliability of \logml{i} estimates will increase with signal-to-noise ratio, before plateauing at in the range $10 \le \rm{SNR} \le 30$. At higher SNR, systematics related to the choice of model stellar atmospheres, SFHs, and other secondary factors will begin to adversely-influence the fit quality. Since a relatively small amount of recent star-formation can yield a blue spectrum, but most of the mass is contained in low-mass stars, blue spectra may have less accurate mass-to-light estimates. \logml{i} systematics with respect to stellar metallicity are possible for the same reason they are for pure CMLRs: in brief, stellar metallicity affects the evolution of single stars---changing, for example, main-sequence lifetimes at fixed initial mass, which significantly changes the integrated photometric properties (color and luminosity being the most salient) of the stellar population \citep[see][and related MESA/MIST works for a more thorough review]{choi_16_mist}. Finally, extreme attenuation could result in an under-estimate of \logml{i}, as in the CMLRs.
+
+To evaluate the reliability of the \logml{i} fits with respect to color, known stellar metallicity, and known attenuation, we use test data that were generated identically to the rest of the CSP training library (see Section \ref{chap1:sec:SFHs}), but were not used to find the PCA system or for the parameter inference described in Section \ref{chap1:subsec:param_estimates}. Appendix \ref{chap1:apdx:fakedata} contains a complete description of the transformation from the test data to ``mock observations," which are intended to emulate an actual observation of such a spectrum. The mock observations are then pre-processed identically to real observations, and analyzed using the PCA framework previously described. The overall philosophy of the following tests is to bin simultaneously by median signal-to-noise ratio and either $g-r$ color, ${\rm [Z]}$, or $\tau_V$, to discover how those factors impact the reliability of inferred stellar mass-to-light ratios. We report in tabular format statistics of the stellar mass-to-light ratio estimates for both mock observations and real MaNGA galaxies. Table \ref{tab:diag_stats_summ} shows which tables and figures give diagnostic information for which quantities of merit, and binning by which spaxel properties.
+
+\begin{table*}
+    \centering
+    \begin{tabular}{||c|c|c|c|c|c||} \hline
+        Data Type & Bin Type 1 (subplot) & Bin Type 2 (line color) & Quantity of Merit & Table & Figure \\ \hline \hline
+        Mock & SNR & $g - r$ & \qtydev{\logml{i}} & \ref{tab:mocks_snr_color_devMLi} & \ref{fig:mocks_snr_color_hist_devMLi} \\ \hline
+        Mock & SNR & $g - r$ & \qtywid{\logml{i}} & \ref{tab:mocks_snr_color_widMLi} & \ref{fig:mocks_snr_color_hist_widMLi} \\ \hline
+        Mock & SNR & $g - r$ & \qtydevwid{\logml{i}} & \ref{tab:mocks_snr_color_devwidMLi} & \ref{fig:mocks_snr_color_hist_devwidMLi} \\ \hline
+        Mock & SNR & $\tau_V$ & \qtydev{\logml{i}} & \ref{tab:mocks_snr_tauV_devMLi} & \ref{fig:mocks_snr_tauV_hist_devMLi} \\ \hline
+        % Mock & SNR & $\tau_V$ & \qtywid{\logml{i}} & \ref{tab:mocks_snr_tauV_widMLi} & \ref{fig:mocks_snr_tauV_hist_widMLi} \\ \hline
+        % Mock & SNR & $\tau_V$ & \qtydevwid{\logml{i}} & \ref{tab:mocks_snr_tauV_devwidMLi} & \ref{fig:mocks_snr_tauV_hist_devwidMLi} \\ \hline
+        Mock & SNR & ${\rm [Z]}$ & \qtydev{\logml{i}} & \ref{tab:mocks_snr_Z_devMLi} & \ref{fig:mocks_snr_Z_hist_devMLi} \\ \hline
+        % Mock & SNR & ${\rm [Z]}$ & \qtywid{\logml{i}} & \ref{tab:mocks_snr_Z_widMLi} & \ref{fig:mocks_snr_Z_hist_widMLi}  \\ \hline
+        % Mock & SNR & ${\rm [Z]}$ & \qtydevwid{\logml{i}} & \ref{tab:mocks_snr_Z_devwidMLi} & \ref{fig:mocks_snr_Z_hist_devwidMLi} \\ \hline
+        Obs. & SNR & $g - r$ & \qtywid{\logml{i}} & \ref{tab:obs_snr_color_widMLi} & \ref{fig:obs_snr_color_hist_widMLi} \\ \hline
+    \end{tabular}
+    \caption{\fixspacing Locations of figures \& summary statistics for mock observations \& real MaNGA data.}
+    \label{tab:diag_stats_summ}
+\end{table*}
+
+In the general case, for some parameter $Y$, the known value intrinsic to one SFH is denoted $Y_0$, and the estimate as $\tilde{Y}$. We then define the ``deviation" between the two, 
+%
+\begin{equation}
+    \qtydev{Y} = \tilde{Y} - Y_0
+\end{equation}
+%
+and consider the dependence of deviation in stellar mass-to-light ratio on color, known stellar metallicity, and known attenuation.
+
+We similarly define the ``uncertainty" of the distribution (\qtywid{Y}) as half the difference between the distribution's 16$^{\rm th}$ and 84$^{\rm th}$ percentiles. Finally, we define a parameter's ``normalized deviation" to be the deviation divided by the distribution half-width, \qtydevwid{Y}. Note the distinction between deviation (\qtydev{Y}), which relies on knowledge of the true parameter value $Y_0$ in comparison to the estimated value $\tilde{Y}$; and uncertainty (\qtywid{Y}), which is purely a description of the width of the posterior PDF of $Y$ given some observed spectrum.
+
+Using the mock observations for \ntestgalaxies galaxies (slightly less than 7\% of \mplv, and consisting of \ntestspaxels spaxels), we show in Figure \ref{fig:mocks_snr_color_hist_devMLi} the deviation \qtydev{\logml{i}} after binning separately by median signal-to-noise ratio (high SNR in top panel) and $g-r$ color (colored lines within one panel). At moderate to high signal-to-noise (SNR $>$ 10), the overall \qtydev{\logml{i}} profiles at fixed color do not change appreciably with increasing signal-to-noise. At lower signal-to-noise, the mode of red spectra moves to $\qtydev{\logml{i}} < 0$ (the mass-to-light ratio is underestimated), and the mode of blue spectra moves to $\qtydev{\logml{i}} > 0$ (the mass-to-light ratio is overestimated). The width of this distribution also decreases somewhat as signal-to-noise increases to moderate value.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=5in]{mocks_snr_color_hist_devMLi}
+    \caption[Reliability of \logml{i} versus color and signal-to-noise]{\fixspacing Distributions of deviations of PCA-inferred stellar mass-to-light ratio (\qtydev{\logml{i}}), binned into vertical subplots according to median signal-to-noise ratio, and then within each subplot according to $g-r$ color. Stellar mass-to-light ratio estimates become slightly more reliable with increasing signal-to-noise ratio, but do not improve significantly at SNR above 10, beyond $\qtydev{\logml{i}} \sim 0.1~{\rm dex}$.}
+    \label{fig:mocks_snr_color_hist_devMLi}
+\end{figure}
+
+\begin{table*}[p]
+    \centering
+    \begin{tabular}{||c|c|c|c|c||} \hline \hline
+        Bin 1 (panel) range & Bin 2 (color) range & $P^{50}(\qtydev{\logml{i}})$ & $P^{50}(\qtydev{\logml{i}})$  - $P^{16}(\qtydev{\logml{i}})$ & $P^{84}(\qtydev{\logml{i}})$ - $P^{50}(\qtydev{\logml{i}})$ \\ \hline \hline
+        [$-\infty$, 2.0] & [$-\infty$, 0.35] & $8.21 \times 10^{-2}$ & $1.04 \times 10^{-1}$ & $1.17 \times 10^{-1}$ \\ \hline
+        [$-\infty$, 2.0] & [0.35, 0.7] & $5.51 \times 10^{-3}$ & $7.40 \times 10^{-2}$ & $1.05 \times 10^{-1}$ \\ \hline
+        [$-\infty$, 2.0] & [0.7, $\infty$] & $-2.59 \times 10^{-2}$ & $9.04 \times 10^{-2}$ & $9.13 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [$-\infty$, 0.35] & $4.51 \times 10^{-2}$ & $7.84 \times 10^{-2}$ & $9.92 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [0.35, 0.7] & $2.15 \times 10^{-2}$ & $6.39 \times 10^{-2}$ & $6.71 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [0.7, $\infty$] & $1.03 \times 10^{-2}$ & $7.44 \times 10^{-2}$ & $8.97 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [$-\infty$, 0.35] & $1.47 \times 10^{-2}$ & $5.30 \times 10^{-2}$ & $5.51 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [0.35, 0.7] & $1.62 \times 10^{-2}$ & $4.90 \times 10^{-2}$ & $5.03 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [0.7, $\infty$] & $-1.89 \times 10^{-3}$ & $5.62 \times 10^{-2}$ & $5.94 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [$-\infty$, 0.35] & $1.19 \times 10^{-2}$ & $4.12 \times 10^{-2}$ & $4.87 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [0.35, 0.7] & $4.75 \times 10^{-3}$ & $4.52 \times 10^{-2}$ & $4.80 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [0.7, $\infty$] & $-1.73 \times 10^{-2}$ & $6.16 \times 10^{-2}$ & $5.11 \times 10^{-2}$ \\ \hline
+    \end{tabular}
+    \caption[Statistics of \qtydev{\logml{i}} for mock observations, separated by mean SNR and $g - r$ color]{\fixspacing Statistics of \qtydev{\logml{i}} for mock observations, separated by mean SNR and $g - r$ color: columns 3--5 respectively list the 50$^{\rm th}$ percentile value, the difference between the 84$^{\rm th}$ percentile value \& the 50$^{\rm th}$ percentile value, and the difference between the 50$^{\rm th}$ percentile value \& the 16$^{\rm th}$ percentile value.}
+    \label{tab:mocks_snr_color_devMLi}
+\end{table*}
+
+Next, we test the dependence of the quoted mass-to-light uncertainty (\qtywid{\logml{i}}) on optical ($g-r$) color, and the results are shown in Figure \ref{fig:mocks_snr_color_hist_widMLi}. Several effects manifest in this case, which we will address separately: first, at fixed signal-to-noise (within one panel), the moderate-color spectra have the lowest uncertainty, and the blue spectra have the highest, with red spectra falling somewhere in the middle. Naturally, the reddest spectra could be produced by either an intrinsically old stellar population or prevalent dust---in fact, \citet{bell_03} estimated the impact of dust for pure CMLRs as 0.1--0.2 dex, somewhat higher than the (approximately 0.05 dex) offset we observe between moderate-color and red spectra. The bluest spectra are the most uncertain because though the majority of the light originates from young, blue stars, most of the mass resides in small, dim stars. In other words, there is the potential for the mass-carrying population to have its signal washed out by the younger, brighter one. We believe the positive (0.05--0.1 dex) offset of \qtywid{\logml{i}} in blue spectra with respect to \qtywid{\logml{i}} for intermediate- and red-color spectra at signal-to-noise ratios less than 10 is a manifestation of this effect.
+
+\begin{figure*}
+    \centering
+    \begin{minipage}[t]{\columnwidth}
+        \centering
+        \includegraphics[width=5in]{mocks_snr_color_hist_widMLi}
+        \caption[\qtywid{\logml{i}} versus color and signal-to-noise in fits to mock data]{\fixspacing Distributions of uncertainty in PCA-inferred stellar mass-to-light ratio (\qtywid{\logml{i}}) for mock observations of synthetic spectra, binned into vertical subplots according to median signal-to-noise ratio, and then within each subplot according to $g-r$ color. The overall uncertainty does decrease with median signal-to-noise ratio: this effect is strongest for blue spectra and weakest for red (at low signal-to-noise, an acceptable fit to a blue spectrum allows for a significant amount of mass from old stars---this degeneracy weakens as signal-to-noise ratio rises).}
+        \label{fig:mocks_snr_color_hist_widMLi}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{\columnwidth}
+        \centering
+        \includegraphics[width=5in]{obs_snr_color_hist_widMLi}
+        \caption[\qtywid{\logml{i}} versus color and signal-to-noise for observations]{As Figure \ref{fig:mocks_snr_color_hist_widMLi}, except using analysis of real MaNGA galaxies, rather than mock observations of test data. The shapes and relative positions of individual color-SNR-binned distributions are qualitatively very similar to the distributions of mock observations in \ref{fig:mocks_snr_color_hist_widMLi}.}
+        \label{fig:obs_snr_color_hist_widMLi}
+    \end{minipage}
+    
+\end{figure*}
+
+\begin{table*}[p]
+    \centering
+    \begin{tabular}{||c|c|c|c|c||} \hline \hline
+        Bin 1 (panel) range & Bin 2 (color) range & $P^{50}(\qtywid{\logml{i}})$ & $P^{50}(\qtywid{\logml{i}})$  - $P^{16}(\qtywid{\logml{i}})$ & $P^{84}(\qtywid{\logml{i}})$ - $P^{50}(\qtywid{\logml{i}})$ \\ \hline \hline
+        [$-\infty$, 2.0] & [$-\infty$, 0.35] & $2.25 \times 10^{-1}$ & $3.13 \times 10^{-2}$ & $3.25 \times 10^{-2}$ \\ \hline
+        [$-\infty$, 2.0] & [0.35, 0.7] & $1.88 \times 10^{-1}$ & $2.30 \times 10^{-2}$ & $3.02 \times 10^{-2}$ \\ \hline
+        [$-\infty$, 2.0] & [0.7, $\infty$] & $2.11 \times 10^{-1}$ & $2.47 \times 10^{-2}$ & $4.62 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [$-\infty$, 0.35] & $1.90 \times 10^{-1}$ & $6.80 \times 10^{-2}$ & $6.28 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [0.35, 0.7] & $1.46 \times 10^{-1}$ & $2.77 \times 10^{-2}$ & $3.99 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [0.7, $\infty$] & $1.73 \times 10^{-1}$ & $2.98 \times 10^{-2}$ & $2.28 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [$-\infty$, 0.35] & $1.21 \times 10^{-1}$ & $2.97 \times 10^{-2}$ & $9.19 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [0.35, 0.7] & $1.13 \times 10^{-1}$ & $1.98 \times 10^{-2}$ & $3.70 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [0.7, $\infty$] & $1.57 \times 10^{-1}$ & $4.10 \times 10^{-2}$ & $3.10 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [$-\infty$, 0.35] & $1.01 \times 10^{-1}$ & $2.07 \times 10^{-2}$ & $7.48 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [0.35, 0.7] & $1.05 \times 10^{-1}$ & $1.77 \times 10^{-2}$ & $3.01 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [0.7, $\infty$] & $1.49 \times 10^{-1}$ & $4.02 \times 10^{-2}$ & $3.41 \times 10^{-2}$ \\ \hline
+    \end{tabular}
+    \caption[Statistics of \qtywid{\logml{i}} for mock observations, separated by mean SNR and $g - r$ color]{\fixspacing Statistics of \qtywid{\logml{i}} for mock observations, separated by mean SNR and $g - r$ color: columns 3--5 respectively list the 50$^{\rm th}$ percentile value, the difference between the 84$^{\rm th}$ percentile value \& the 50$^{\rm th}$ percentile value, and the difference between the 50$^{\rm th}$ percentile value \& the 16$^{\rm th}$ percentile value.}
+    \label{tab:mocks_snr_color_widMLi}
+\end{table*}
+
+\begin{table*}[p]
+    \centering
+    \begin{tabular}{||c|c|c|c|c||} \hline \hline
+        Bin 1 (panel) range & Bin 2 (color) range & $P^{50}(\qtywid{\logml{i}})$ & $P^{50}(\qtywid{\logml{i}})$  - $P^{16}(\qtywid{\logml{i}})$ & $P^{84}(\qtywid{\logml{i}})$ - $P^{50}(\qtywid{\logml{i}})$ \\ \hline \hline
+        [$-\infty$, 2.0] & [$-\infty$, 0.35] & $2.18 \times 10^{-1}$ & $2.81 \times 10^{-2}$ & $4.23 \times 10^{-2}$ \\ \hline
+        [$-\infty$, 2.0] & [0.35, 0.7] & $1.72 \times 10^{-1}$ & $2.04 \times 10^{-2}$ & $2.70 \times 10^{-2}$ \\ \hline
+        [$-\infty$, 2.0] & [0.7, $\infty$] & $1.91 \times 10^{-1}$ & $1.67 \times 10^{-2}$ & $1.99 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [$-\infty$, 0.35] & $1.67 \times 10^{-1}$ & $4.74 \times 10^{-2}$ & $6.03 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [0.35, 0.7] & $1.37 \times 10^{-1}$ & $2.43 \times 10^{-2}$ & $4.44 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [0.7, $\infty$] & $1.69 \times 10^{-1}$ & $2.55 \times 10^{-2}$ & $2.16 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [$-\infty$, 0.35] & $1.11 \times 10^{-1}$ & $2.15 \times 10^{-2}$ & $6.47 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [0.35, 0.7] & $1.14 \times 10^{-1}$ & $1.86 \times 10^{-2}$ & $3.68 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [0.7, $\infty$] & $1.69 \times 10^{-1}$ & $3.74 \times 10^{-2}$ & $2.62 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [$-\infty$, 0.35] & $9.54 \times 10^{-2}$ & $1.69 \times 10^{-2}$ & $6.45 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [0.35, 0.7] & $1.07 \times 10^{-1}$ & $2.18 \times 10^{-2}$ & $3.90 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [0.7, $\infty$] & $1.65 \times 10^{-1}$ & $4.37 \times 10^{-2}$ & $3.46 \times 10^{-2}$ \\ \hline
+    \end{tabular}
+    \caption[Statistics of \qtywid{\logml{i}} for real MaNGA observations, separated by mean SNR and $g - r$ color]{\fixspacing Statistics of \qtywid{\logml{i}} for real MaNGA observations, separated by mean SNR and $g - r$ color: columns 3--5 respectively list the 50$^{\rm th}$ percentile value, the difference between the 84$^{\rm th}$ percentile value \& the 50$^{\rm th}$ percentile value, and the difference between the 50$^{\rm th}$ percentile value \& the 16$^{\rm th}$ percentile value.}
+    \label{tab:obs_snr_color_widMLi}
+\end{table*}
+
+In addition, at fixed color, an increase in signal-to-noise is not necessarily associated with a decrease in \qtywid{\logml{i}}. Rather, improvements seem to disappear (and possibly reverse at signal-to-noise greater than 20). In reality, there are several lower limits on \qtywid{\logml{i}}: the spectrophotometric uncertainty, which we model as independent of surface brightness, produces covariate noise at between the 1--3\% level, and has a spectral signature similar to a changing mass-to-light ratio. The rising uncertainty at $S/N > 20$ could also be understood in terms of how densely-populated the model grid is with respect to the uncertainty on the data: by increasing the signal-to-noise of the data, the $n$-dimensional volume subtended by a noise vector $N$ will decrease to the point where the parameter PDF is not well-sampled (this will be particularly problematic where a SFH's PC representation lies near an ``edge"). Interestingly, regardless of color or signal-to-noise, the RMS of the deviation (the width of the \qtydev{\logml{i}} distribution) is always of the same order as (and often a factor of up to two less than) the mean of the uncertainty (\qtywid{\logml{i}}). This means that on the whole, uncertainties in stellar mass-to-light ratio reflect the real statistical uncertainty. We examine this below by showing the distribution of \qtydevwid{\logml{i}}.
+
+For the sake of comparison, we display \qtywid{\logml{i}} for the same sample of \emph{real} galaxies (Figure \ref{fig:obs_snr_color_hist_widMLi}). The distributions of these data are qualitatively similar to the case of the mock observations of synthetic spectra: regardless of color, stellar mass-to-light ratio uncertainty decreases as signal-to-noise ratio increases, but this effect is strongest for blue spectra and weakest for red. The most noticeable difference between fits to mock observations and real observations is at moderate signal-to-noise ratio: the mocks' distribution of uncertainty has a higher mode (0.25 dex, versus the observations' 0.15 dex). It is probable that this difference in behavior has to do with slight discrepancies in the distribution of training data with respect to real galaxies. The relative strengths of individual binned distributions are likewise determined by the details of the SFH library: for example, a larger proportion of observations at low signal-to-noise ratio are blue, since the lower surface-brightness outskirts of galaxies will have commensurately-lower signal-to-noise ratios. As a whole, though, the distributions of \qtywid{\logml{i}} for mocks and real observations are broadly similar when the same signal-to-noise and color ranges are compared. We believe this indicates both that the mocks are a faithful reconstruction of MaNGA observations; and that the actual distribution of SFHs in MaNGA spaxels is sufficiently similar to the training data to infer unobserved properties such as stellar mass-to-light ratio.
+
+We next consider the normalized deviations (\qtydevwid{\logml{i}}) with respect to the mocks, which are important for evaluating whether the provided mass-to-light ratio uncertainties are accurate. Figure \ref{fig:mocks_snr_color_hist_devwidMLi} illustrates the relatively steady accuracy of the \logml{i} estimates with respect to color and signal-to-noise (besides the effects on \qtydev{\logml{i}} already discussed). In all cases but low-signal-to-noise, blue spectra, the \qtydevwid{\logml{i}} distributions are relatively symmetrical, and do not exhibit significant power at high absolute values (which would indicate unreliable uncertainties in some region of parameter-space). Most distributions compare favorably to the ideal case of the uncertainty roughly matching the deviation (blue, dotted curve). In summary, from the above tests on both synthetic and real observations, we conclude that the PCA parameter estimation implemented here for \logml{i} achieves acceptable levels of accuracy and precision for use in estimating total stellar-mass.
+
+\begin{figure}
+    \centering
+    \includegraphics{mocks_snr_color_hist_devwidMLi}
+    \caption[As Figure \ref{fig:mocks_snr_color_hist_widMLi}, except with distributions of \qtydevwid{\logml{i}}]{\fixspacing As Figure \ref{fig:mocks_snr_color_hist_widMLi}, except with distributions of \qtydevwid{\logml{i}}. Up to the small offset effects covariate with integrated color (see Figure \ref{fig:mocks_snr_color_hist_devMLi}), we find that the reported uncertainties in \logml{i} faithfully reflect the real deviation between the inferred stellar mass-to-light ratio and its true value. Overplotted in blue-gray is a normal distribution with dispersion of unity, which should correspond to the nominal case of uncertainties that match well with the actual accuracy of an estimate.}
+    \label{fig:mocks_snr_color_hist_devwidMLi}
+\end{figure}
+
+\begin{table*}[p]
+    \centering
+    \begin{tabular}{||c|c|c|c|c||} \hline \hline
+        Bin 1 (panel) range & Bin 2 (color) range & $P^{50}(\qtydevwid{\logml{i}})$ & $P^{50}(\qtydevwid{\logml{i}})$  - $P^{16}(\qtydevwid{\logml{i}})$ & $P^{84}(\qtydevwid{\logml{i}})$ - $P^{50}(\qtydevwid{\logml{i}})$ \\ \hline \hline
+        [$-\infty$, 2.0] & [$-\infty$, 0.35] & $7.11 \times 10^{-1}$ & $9.11 \times 10^{-1}$ & $1.02 \times 10^{0}$ \\ \hline
+        [$-\infty$, 2.0] & [0.35, 0.7] & $5.79 \times 10^{-2}$ & $7.61 \times 10^{-1}$ & $1.12 \times 10^{0}$ \\ \hline
+        [$-\infty$, 2.0] & [0.7, $\infty$] & $-2.36 \times 10^{-1}$ & $8.42 \times 10^{-1}$ & $8.04 \times 10^{-1}$ \\ \hline
+        [2.0, 10.0] & [$-\infty$, 0.35] & $5.16 \times 10^{-1}$ & $8.98 \times 10^{-1}$ & $9.70 \times 10^{-1}$ \\ \hline
+        [2.0, 10.0] & [0.35, 0.7] & $3.00 \times 10^{-1}$ & $8.33 \times 10^{-1}$ & $9.56 \times 10^{-1}$ \\ \hline
+        [2.0, 10.0] & [0.7, $\infty$] & $1.19 \times 10^{-1}$ & $8.41 \times 10^{-1}$ & $1.09 \times 10^{0}$ \\ \hline
+        [10.0, 20.0] & [$-\infty$, 0.35] & $2.25 \times 10^{-1}$ & $8.29 \times 10^{-1}$ & $8.13 \times 10^{-1}$ \\ \hline
+        [10.0, 20.0] & [0.35, 0.7] & $2.88 \times 10^{-1}$ & $8.12 \times 10^{-1}$ & $9.01 \times 10^{-1}$ \\ \hline
+        [10.0, 20.0] & [0.7, $\infty$] & $-2.60 \times 10^{-2}$ & $7.03 \times 10^{-1}$ & $8.62 \times 10^{-1}$ \\ \hline
+        [20.0, $\infty$] & [$-\infty$, 0.35] & $2.15 \times 10^{-1}$ & $7.67 \times 10^{-1}$ & $8.43 \times 10^{-1}$ \\ \hline
+        [20.0, $\infty$] & [0.35, 0.7] & $9.37 \times 10^{-2}$ & $8.03 \times 10^{-1}$ & $9.31 \times 10^{-1}$ \\ \hline
+        [20.0, $\infty$] & [0.7, $\infty$] & $-2.38 \times 10^{-1}$ & $7.90 \times 10^{-1}$ & $7.39 \times 10^{-1}$ \\ \hline
+    \end{tabular}
+    \caption[Statistics of \qtydevwid{\logml{i}} for mock observations, separated by mean SNR and $g - r$ color]{\fixspacing Statistics of \qtydevwid{\logml{i}} for mock observations, separated by mean SNR and $g - r$ color: columns 3--5 respectively list the 50$^{\rm th}$ percentile value, the difference between the 84$^{\rm th}$ percentile value \& the 50$^{\rm th}$ percentile value, and the difference between the 50$^{\rm th}$ percentile value \& the 16$^{\rm th}$ percentile value.}
+    \label{tab:mocks_snr_color_devwidMLi}
+\end{table*}
+
+In Section \ref{chap1:subsec:cmlrs}, we showed that our family of CSPs exhibit scatter about their best-fit CMLR which correlates in its magnitude with extreme stellar metallicity and attenuation. Here, we test the precision and accuracy of our \logml{i} estimates. when using stellar population absorption indices, heuristics like the ``3/2 rule" describe the covariance between mean stellar age and metallicity \citep{worthey_94}\footnote{The 3/2 rule is an observation stating that an increase (decrease) of a stellar population's age by a factor of three is almost indistinguishable from an increase (decrease) in metallicity by a factor of two.}. Similarly to what was observed with CMLRs, significant dust attenuation applied to an otherwise-young stellar population could conceivably effect an overestimate of its mass-to-light ratio. Figures \ref{fig:mocks_snr_Z_hist_devMLi} and \ref{fig:mocks_snr_tauV_hist_devMLi} respectively bin \qtydev{\logml{i}} by median signal-to-noise ratio and either $\tau_V$ or ${\rm [Z]}$ for mock observations.
+
+\begin{figure}
+    \centering
+    \includegraphics{mocks_snr_Z_hist_devMLi}
+    \caption[\fixspacing As Figure \ref{fig:mocks_snr_color_hist_devMLi}, except binning with respect to known ${\rm [Z]}$]{\fixspacing As Figure \ref{fig:mocks_snr_color_hist_devMLi}, except binning with respect to known ${\rm [Z]}$ rather than $g-r$ color. Other than at low signal-to-noise ratio and high metallicity (where deviations may reach 0.3 dex), there are minimal systematics in inferred $\log \Upsilon^*_i$ with respect to ${\rm [Z]}$.}
+    \label{fig:mocks_snr_Z_hist_devMLi}
+\end{figure}
+
+\begin{table*}[p]
+    \centering
+    \begin{tabular}{||c|c|c|c|c||} \hline \hline
+        Bin 1 (panel) range & Bin 2 (color) range & $P^{50}(\qtydev{\logml{i}})$ & $P^{50}(\qtydev{\logml{i}})$  - $P^{16}(\qtydev{\logml{i}})$ & $P^{84}(\qtydev{\logml{i}})$ - $P^{50}(\qtydev{\logml{i}})$ \\ \hline \hline
+        [$-\infty$, 2.0] & [$-\infty$, -0.5] & $-1.69 \times 10^{-2}$ & $7.03 \times 10^{-2}$ & $8.05 \times 10^{-2}$ \\ \hline
+        [$-\infty$, 2.0] & [-0.5, 0.0] & $2.47 \times 10^{-2}$ & $8.08 \times 10^{-2}$ & $9.85 \times 10^{-2}$ \\ \hline
+        [$-\infty$, 2.0] & [0.0, $\infty$] & $1.74 \times 10^{-2}$ & $9.91 \times 10^{-2}$ & $1.38 \times 10^{-1}$ \\ \hline
+        [2.0, 10.0] & [$-\infty$, -0.5] & $8.10 \times 10^{-3}$ & $6.63 \times 10^{-2}$ & $5.97 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [-0.5, 0.0] & $3.56 \times 10^{-2}$ & $6.92 \times 10^{-2}$ & $7.96 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [0.0, $\infty$] & $2.70 \times 10^{-2}$ & $7.58 \times 10^{-2}$ & $9.21 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [$-\infty$, -0.5] & $8.30 \times 10^{-3}$ & $5.48 \times 10^{-2}$ & $5.30 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [-0.5, 0.0] & $1.36 \times 10^{-2}$ & $5.46 \times 10^{-2}$ & $5.57 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [0.0, $\infty$] & $1.35 \times 10^{-2}$ & $4.99 \times 10^{-2}$ & $5.28 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [$-\infty$, -0.5] & $6.53 \times 10^{-6}$ & $4.73 \times 10^{-2}$ & $5.23 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [-0.5, 0.0] & $2.05 \times 10^{-6}$ & $4.99 \times 10^{-2}$ & $5.04 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [0.0, $\infty$] & $5.05 \times 10^{-3}$ & $5.14 \times 10^{-2}$ & $4.64 \times 10^{-2}$ \\ \hline
+    \end{tabular}
+    \caption[Statistics of \qtydev{\logml{i}} for mock observations, separated by mean SNR and known stellar metallicity]{\fixspacing Statistics of \qtydev{\logml{i}} for mock observations, separated by mean SNR and known stellar metallicity: columns 3--5 respectively list the 50$^{\rm th}$ percentile value, the difference between the 84$^{\rm th}$ percentile value \& the 50$^{\rm th}$ percentile value, and the difference between the 50$^{\rm th}$ percentile value \& the 16$^{\rm th}$ percentile value.}
+    \label{tab:mocks_snr_Z_devMLi}
+\end{table*}
+
+In Figure \ref{fig:mocks_snr_Z_hist_devMLi}, we see that regardless of metallicity, reliability of \logml{i} estimates increase with signal-to-noise, and converge to $\qtydev{\logml{i}} \sim 0.1$ at $S/N \sim 20$. At high stellar metallicity and low signal-to-noise ratio, the distribution of \qtydev{\logml{i}} becomes significantly skewed (with the long tail at positive \qtydev{\logml{i}}, indicating an overestimate generally less than 0.15 dex). Though this deviation is not reflected in the associated uncertainties (i.e., \qtydevwid{\logml{i}} is high), it ceases at higher SNR. At lower metallicity, the typical deviation between known and estimated mass-to-light ratio remains unimodal across the entire SNR regime.
+
+\begin{figure}
+    \centering
+    \includegraphics{mocks_snr_tauV_hist_devMLi}
+    \caption[As Figure \ref{fig:mocks_snr_color_hist_devMLi}, except binning with respect to known $\tau_V$]{\fixspacing As Figure \ref{fig:mocks_snr_color_hist_devMLi}, except binning with respect to known $\tau_V$ rather than $g-r$ color. As before, at high signal-to-noise, performance of the \logml{i} estimate does not change strongly with attenuation; however, at lower signal-to-noise, high-attenuation spectra may have their stellar mass-to-light ratio overestimated by up to about 0.3 dex. Such cases are expected to be rare in the MaNGA data.}
+    \label{fig:mocks_snr_tauV_hist_devMLi}
+\end{figure}
+
+\begin{table*}[p]
+    \centering
+    \begin{tabular}{||c|c|c|c|c||} \hline \hline
+        Bin 1 (panel) range & Bin 2 (color) range & $P^{50}(\qtydevwid{\logml{i}})$ & $P^{50}(\qtydevwid{\logml{i}})$  - $P^{16}(\qtydevwid{\logml{i}})$ & $P^{84}(\qtydevwid{\logml{i}})$ - $P^{50}(\qtydevwid{\logml{i}})$ \\ \hline \hline
+        [$-\infty$, 2.0] & [$-\infty$, 1.0] & $2.95 \times 10^{-2}$ & $7.48 \times 10^{-2}$ & $9.21 \times 10^{-2}$ \\ \hline
+        [$-\infty$, 2.0] & [1.0, 2.5] & $3.61 \times 10^{-3}$ & $8.48 \times 10^{-2}$ & $1.32 \times 10^{-1}$ \\ \hline
+        [$-\infty$, 2.0] & [2.5, $\infty$] & $-4.19 \times 10^{-2}$ & $7.65 \times 10^{-2}$ & $1.33 \times 10^{-1}$ \\ \hline
+        [2.0, 10.0] & [$-\infty$, 1.0] & $2.46 \times 10^{-2}$ & $6.45 \times 10^{-2}$ & $7.43 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [1.0, 2.5] & $2.27 \times 10^{-2}$ & $7.12 \times 10^{-2}$ & $8.05 \times 10^{-2}$ \\ \hline
+        [2.0, 10.0] & [2.5, $\infty$] & $2.23 \times 10^{-2}$ & $8.56 \times 10^{-2}$ & $1.03 \times 10^{-1}$ \\ \hline
+        [10.0, 20.0] & [$-\infty$, 1.0] & $4.94 \times 10^{-3}$ & $5.15 \times 10^{-2}$ & $5.82 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [1.0, 2.5] & $1.66 \times 10^{-2}$ & $5.12 \times 10^{-2}$ & $5.02 \times 10^{-2}$ \\ \hline
+        [10.0, 20.0] & [2.5, $\infty$] & $1.86 \times 10^{-2}$ & $6.27 \times 10^{-2}$ & $5.30 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [$-\infty$, 1.0] & $-3.60 \times 10^{-7}$ & $4.81 \times 10^{-2}$ & $5.15 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [1.0, 2.5] & $4.13 \times 10^{-3}$ & $4.95 \times 10^{-2}$ & $4.76 \times 10^{-2}$ \\ \hline
+        [20.0, $\infty$] & [2.5, $\infty$] & $9.44 \times 10^{-7}$ & $6.50 \times 10^{-2}$ & $4.50 \times 10^{-2}$ \\ \hline
+    \end{tabular}
+    \caption[Statistics of \qtydev{\logml{i}} for mock observations, separated by mean SNR and $\tau_V$]{\fixspacing Statistics of \qtydev{\logml{i}} for mock observations, separated by mean SNR and $\tau_V$: columns 3--5 respectively list the 50$^{\rm th}$ percentile value, the difference between the 84$^{\rm th}$ percentile value \& the 50$^{\rm th}$ percentile value, and the difference between the 50$^{\rm th}$ percentile value \& the 16$^{\rm th}$ percentile value.}
+    \label{tab:mocks_snr_tauV_devMLi}
+\end{table*}
+
+In Figure \ref{fig:mocks_snr_tauV_hist_devMLi}, we see that high signal-to-noise spectra yield more or less equally-reliable estimates of \logml{i}, regardless of attenuation. As signal-to-noise decreases, spectra with intermediate attenuation tend to skew towards underestimating \logml{i}, while the distribution for high-attenuation spectra becomes much wider, in a way which is not reflected in the parameter uncertainty (\qtywid{\logml{i}}). Such spectra are expected to have little impact, though (by virtue of their high attenuation, such spectra have lower surface-brightness and contribute little to an estimate of a galaxy's total stellar mass).
+
+In summary, while the underlying attenuation and stellar metallicity of a mock SFH does certainly impact the stellar mass-to-light ratio yielded by the PCA parameter estimation, the effects are relatively small for non-extreme cases. When \ntestgalaxies \emph{observed} galaxies are binned simultaneously by $\tau_V \mu$ and ${\rm [Z]}$, the vast majority have $\tau_V \mu < 1.0$ and $-0.5 < {\rm[Z]} < 0.1$, supporting the claim that the training data are more widely-distributed in parameter space than actual MaNGA galaxies are. That is, even with the extremely permissive priors on attenuation and stellar metallicity, the vast majority of fits to observations lie in the region of ${\rm [Z]}$--$\tau_V \mu$ space for which estimates of $\log \Upsilon^*_i$ behave the best. Similar figures illustrating \qtydev{\logml{i}} and \qtydevwid{\logml{i}} in bins of signal-to-noise ratio and either ${\rm [Z]}$ or $\tau_V \mu$ have been omitted for brevity's sake, and do not cause concern.
